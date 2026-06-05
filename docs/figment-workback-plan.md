@@ -1205,6 +1205,7 @@ Can the local model respond?
 Can the three demo cases run?
 Can traces export?
 Can eval run?
+Do unit tests pass?
 Did anything become less safe?
 ```
 
