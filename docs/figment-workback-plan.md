@@ -120,6 +120,21 @@ Published adapter:  nemotron-3-nano-30b-a3b-figment-lora-v1
 
 Compliance check: total parameters = **30B ≤ 32B** (≈2B headroom). The ~3B active-per-forward-pass figure is **not** the compliance number — the org card's limit is on *total* parameters. A LoRA adapter adds far less than 1B trainable params, so base+adapter (or merged) stays ≤32B.
 
+## Performance budget
+
+Set a target and a degradation ladder so the live demo never stalls. Measure on the M4 Pro on June 11 and fill in the numbers:
+
+```text
+Target (30B-Q4_K_M, 16k ctx):
+  first-token latency:  ____ s      (aim ≤ ~3 s)
+  throughput:           ____ tok/s  (aim ≥ ~10 tok/s)
+
+Degradation ladder (apply in order if below target under demo load):
+  1. 16k → 8k context
+  2. Q4_K_M → smaller quant (or shorter max output)
+  3. canned-response mode (pre-baked demo traces) for the live demo
+```
+
 ---
 
 # 3. Figment v1 scope
@@ -797,6 +812,7 @@ Run Nemotron locally through llama.cpp and connect the app.
 * Add timeout handling.
 * Add fallback canned-response mode for Space failures.
 * Validate outputs with `validators.py`.
+* Measure first-token latency + tok/s on the Mac; record them in the §2 performance budget.
 * Export traces.
 
 ### Deliverables
