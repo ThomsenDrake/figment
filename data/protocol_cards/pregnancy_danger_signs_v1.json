@@ -1,0 +1,41 @@
+{
+  "card_id": "PREG-DANGER-SIGNS-v1",
+  "title": "Pregnancy danger signs",
+  "applies_to": [
+    "pregnancy",
+    "postpartum",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "pregnancy or postpartum status",
+    "bleeding report",
+    "abdominal pain report",
+    "headache or vision symptoms",
+    "seizure or fainting report",
+    "fever report",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "vaginal bleeding during pregnancy or postpartum",
+    "seizure, fainting, or altered mental status",
+    "severe headache or vision changes",
+    "severe abdominal pain",
+    "fever with pregnancy or postpartum concern",
+    "marked swelling of face or hands"
+  ],
+  "escalation_criteria": [
+    "Pregnancy or postpartum bleeding requires emergency escalation.",
+    "Seizure, severe headache with vision changes, or altered mental status requires emergency escalation."
+  ],
+  "local_actions": [
+    "Escalate through the local obstetric, emergency, or clinician-supervisor pathway.",
+    "Document pregnancy status, gestational estimate if known, bleeding description, pain, vital signs, and timeline for handoff."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose pregnancy complications.",
+    "Do not provide medication, dosing, delivery, or procedure instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

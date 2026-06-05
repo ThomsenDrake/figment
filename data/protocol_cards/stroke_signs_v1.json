@@ -1,0 +1,39 @@
+{
+  "card_id": "STROKE-SIGNS-v1",
+  "title": "Stroke signs",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "face droop observation",
+    "arm weakness observation",
+    "speech change observation",
+    "vision or balance change report",
+    "last known well time if known",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "facial droop",
+    "arm weakness or one-sided weakness",
+    "slurred speech or trouble speaking",
+    "sudden vision change",
+    "sudden balance trouble",
+    "sudden severe headache with neurologic signs"
+  ],
+  "escalation_criteria": [
+    "Any sudden FAST-type sign or neurologic deficit requires emergency escalation.",
+    "Record last-known-well time if known, but do not delay escalation to obtain it."
+  ],
+  "local_actions": [
+    "Document observed face, arm, and speech findings plus last-known-well time if known.",
+    "Escalate through the local emergency pathway."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose stroke or stroke subtype.",
+    "Do not provide medication, dosing, food, drink, or procedure instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

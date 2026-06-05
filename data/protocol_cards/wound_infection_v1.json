@@ -1,0 +1,40 @@
+{
+  "card_id": "WOUND-INFECTION-ESCALATION-v1",
+  "title": "Wound infection escalation",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "wound location",
+    "wound age or timeline",
+    "redness or swelling pattern",
+    "drainage description",
+    "pain trend",
+    "fever report",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "spreading redness around a wound",
+    "red streaking from a wound",
+    "pus or foul drainage with worsening symptoms",
+    "fever with wound concern",
+    "rapidly worsening pain, swelling, or warmth",
+    "confusion or severe weakness with wound concern"
+  ],
+  "escalation_criteria": [
+    "Spreading redness, red streaking, fever, or systemic symptoms require urgent escalation according to local protocol.",
+    "Rapid worsening or altered mental status with a wound concern requires emergency escalation."
+  ],
+  "local_actions": [
+    "Document wound location, timeline, drainage, fever report, and extent of redness for handoff.",
+    "Mark or describe the visible spread only if local protocol uses that practice and it does not delay escalation."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose infection type or severity.",
+    "Do not start antibiotics, prescribe medication, or provide dosing instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

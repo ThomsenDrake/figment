@@ -1,0 +1,39 @@
+{
+  "card_id": "RESP-DISTRESS-RED-FLAGS-v1",
+  "title": "Respiratory distress red flags",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "respiratory effort",
+    "ability to speak",
+    "skin or lip color",
+    "respiratory rate if available",
+    "oxygen saturation if available",
+    "mental status"
+  ],
+  "red_flags": [
+    "severe respiratory distress",
+    "gasping or unable to speak full sentences",
+    "blue lips or cyanosis",
+    "marked retractions or tripod positioning",
+    "altered mental status with breathing concern",
+    "very low oxygen saturation according to local protocol"
+  ],
+  "escalation_criteria": [
+    "Severe breathing difficulty or cyanosis requires emergency escalation.",
+    "Altered mental status with respiratory concern requires emergency escalation."
+  ],
+  "local_actions": [
+    "Keep the person under direct observation while escalation is arranged.",
+    "Document respiratory effort, color, respiratory rate, oxygen saturation if available, and timeline for handoff."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose the cause of respiratory distress.",
+    "Do not provide medication, oxygen-flow, or airway-procedure instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

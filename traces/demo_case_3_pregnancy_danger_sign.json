@@ -1,0 +1,132 @@
+{
+  "audio": null,
+  "events": [
+    "input captured",
+    "rules evaluated",
+    "cards retrieved",
+    "navigator output generated",
+    "validation complete"
+  ],
+  "input_captured": {
+    "confirmed_intake_hash": "94f1030ca30b2ee3",
+    "structured_intake": {
+      "allergies": "unknown",
+      "available_supplies": "phone, transport contact",
+      "chief_concern": "bleeding and severe headache",
+      "confirmed": true,
+      "medications": "prenatal vitamin reported",
+      "patient_age": "29",
+      "pregnancy_status": "pregnant",
+      "responder_note": "Patient is pregnant and reports bleeding.",
+      "setting": "rural clinic",
+      "symptoms": "vaginal bleeding, severe headache, dizziness",
+      "vitals": "blood pressure not available"
+    }
+  },
+  "model_route": {
+    "fallback_tier": "canned",
+    "model_backend": "canned",
+    "model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
+    "model_stack": "omni_native"
+  },
+  "navigator_output": {
+    "candidate_protocol_pathways": [
+      {
+        "card_id": "PREG-DANGER-SIGNS-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      },
+      {
+        "card_id": "REFERRAL-SBAR-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      },
+      {
+        "card_id": "SAFETY-BOUNDARIES-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      }
+    ],
+    "conflicts_or_uncertainties": [
+      "Prototype output; responder must verify all observations."
+    ],
+    "do_not_do": [
+      "Do not assign a condition label.",
+      "Do not add medication instructions beyond cited local protocol text.",
+      "Do not downgrade red flags."
+    ],
+    "handoff_note_sbar": {
+      "assessment_observations_only": "Observed/reported: vaginal bleeding, severe headache, dizziness. Vitals: blood pressure not available.",
+      "background": "Setting: rural clinic. Pregnancy danger sign.",
+      "handoff_request": "Request review/escalation per cited local protocol cards.",
+      "situation": "bleeding and severe headache"
+    },
+    "intake_facts": [
+      {
+        "fact": "Concern: bleeding and severe headache",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Vitals: blood pressure not available",
+        "source": "structured_field",
+        "status": "reported"
+      }
+    ],
+    "missing_info_to_collect": [
+      "repeat vitals",
+      "time course",
+      "available referral route"
+    ],
+    "next_observations_to_collect": [
+      "level of alertness",
+      "work of breathing",
+      "hydration/perfusion signs"
+    ],
+    "protocol_urgency": "emergency",
+    "red_flags": [
+      {
+        "card_id": "PREG-DANGER-SIGNS-v1",
+        "evidence": "vaginal bleeding",
+        "label": "Pregnancy danger sign",
+        "rule_id": "PREG-001",
+        "urgency": "emergency"
+      }
+    ],
+    "responder_checklist": [
+      "Keep deterministic red-flag result visible.",
+      "Collect the missing observations before relying on protocol guidance.",
+      "Use local escalation pathway if the case worsens or protocol cards do not fit."
+    ],
+    "responder_plain_language_script": "I am going to check the next protocol observations and escalate if the danger signs remain present.",
+    "safety_boundary": "Prototype protocol navigation only; no condition label, medication order, or autonomous routing.",
+    "source_cards": [
+      "PREG-DANGER-SIGNS-v1",
+      "REFERRAL-SBAR-v1",
+      "SAFETY-BOUNDARIES-v1",
+      "RESP-DISTRESS-RED-FLAGS-v1",
+      "AMS-RED-FLAGS-v1",
+      "CHEST-PAIN-ESCALATION-v1"
+    ]
+  },
+  "prompt_template_hash": "9a176778efcd60ba",
+  "raw_audio_stored": false,
+  "red_flags": [
+    {
+      "card_id": "PREG-DANGER-SIGNS-v1",
+      "evidence": "vaginal bleeding",
+      "label": "Pregnancy danger sign",
+      "rule_id": "PREG-001",
+      "urgency": "emergency"
+    }
+  ],
+  "retrieved_card_ids": [
+    "PREG-DANGER-SIGNS-v1",
+    "REFERRAL-SBAR-v1",
+    "SAFETY-BOUNDARIES-v1",
+    "RESP-DISTRESS-RED-FLAGS-v1",
+    "AMS-RED-FLAGS-v1",
+    "CHEST-PAIN-ESCALATION-v1"
+  ],
+  "validator_result": {
+    "failures": [],
+    "passed": true
+  }
+}

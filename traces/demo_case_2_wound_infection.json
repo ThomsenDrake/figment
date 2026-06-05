@@ -1,0 +1,132 @@
+{
+  "audio": null,
+  "events": [
+    "input captured",
+    "rules evaluated",
+    "cards retrieved",
+    "navigator output generated",
+    "validation complete"
+  ],
+  "input_captured": {
+    "confirmed_intake_hash": "bb4c17d49acea289",
+    "structured_intake": {
+      "allergies": "unknown",
+      "available_supplies": "clean dressings, radio",
+      "chief_concern": "wound getting worse",
+      "confirmed": true,
+      "medications": "unknown",
+      "patient_age": "43",
+      "pregnancy_status": "not_applicable",
+      "responder_note": "Cut from debris three days ago.",
+      "setting": "mobile clinic",
+      "symptoms": "spreading redness, swelling, foul drainage",
+      "vitals": "temperature unknown"
+    }
+  },
+  "model_route": {
+    "fallback_tier": "canned",
+    "model_backend": "canned",
+    "model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
+    "model_stack": "omni_native"
+  },
+  "navigator_output": {
+    "candidate_protocol_pathways": [
+      {
+        "card_id": "WOUND-INFECTION-ESCALATION-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      },
+      {
+        "card_id": "SAFETY-BOUNDARIES-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      },
+      {
+        "card_id": "FEVER-RED-FLAGS-v1",
+        "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
+      }
+    ],
+    "conflicts_or_uncertainties": [
+      "Prototype output; responder must verify all observations."
+    ],
+    "do_not_do": [
+      "Do not assign a condition label.",
+      "Do not add medication instructions beyond cited local protocol text.",
+      "Do not downgrade red flags."
+    ],
+    "handoff_note_sbar": {
+      "assessment_observations_only": "Observed/reported: spreading redness, swelling, foul drainage. Vitals: temperature unknown.",
+      "background": "Setting: mobile clinic. Wound infection escalation cue.",
+      "handoff_request": "Request review/escalation per cited local protocol cards.",
+      "situation": "wound getting worse"
+    },
+    "intake_facts": [
+      {
+        "fact": "Concern: wound getting worse",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Vitals: temperature unknown",
+        "source": "structured_field",
+        "status": "reported"
+      }
+    ],
+    "missing_info_to_collect": [
+      "repeat vitals",
+      "time course",
+      "available referral route"
+    ],
+    "next_observations_to_collect": [
+      "level of alertness",
+      "work of breathing",
+      "hydration/perfusion signs"
+    ],
+    "protocol_urgency": "urgent",
+    "red_flags": [
+      {
+        "card_id": "WOUND-INFECTION-ESCALATION-v1",
+        "evidence": "spreading redness",
+        "label": "Wound infection escalation cue",
+        "rule_id": "WOUND-001",
+        "urgency": "urgent"
+      }
+    ],
+    "responder_checklist": [
+      "Keep deterministic red-flag result visible.",
+      "Collect the missing observations before relying on protocol guidance.",
+      "Use local escalation pathway if the case worsens or protocol cards do not fit."
+    ],
+    "responder_plain_language_script": "I am going to check the next protocol observations and escalate if the danger signs remain present.",
+    "safety_boundary": "Prototype protocol navigation only; no condition label, medication order, or autonomous routing.",
+    "source_cards": [
+      "WOUND-INFECTION-ESCALATION-v1",
+      "SAFETY-BOUNDARIES-v1",
+      "FEVER-RED-FLAGS-v1",
+      "REFERRAL-SBAR-v1",
+      "PED-DEHYD-RED-FLAGS-v1",
+      "PREG-DANGER-SIGNS-v1"
+    ]
+  },
+  "prompt_template_hash": "9a176778efcd60ba",
+  "raw_audio_stored": false,
+  "red_flags": [
+    {
+      "card_id": "WOUND-INFECTION-ESCALATION-v1",
+      "evidence": "spreading redness",
+      "label": "Wound infection escalation cue",
+      "rule_id": "WOUND-001",
+      "urgency": "urgent"
+    }
+  ],
+  "retrieved_card_ids": [
+    "WOUND-INFECTION-ESCALATION-v1",
+    "SAFETY-BOUNDARIES-v1",
+    "FEVER-RED-FLAGS-v1",
+    "REFERRAL-SBAR-v1",
+    "PED-DEHYD-RED-FLAGS-v1",
+    "PREG-DANGER-SIGNS-v1"
+  ],
+  "validator_result": {
+    "failures": [],
+    "passed": true
+  }
+}

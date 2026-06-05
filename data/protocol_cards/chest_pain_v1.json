@@ -1,0 +1,38 @@
+{
+  "card_id": "CHEST-PAIN-ESCALATION-v1",
+  "title": "Chest pain escalation",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "chest pain description",
+    "onset and duration",
+    "shortness of breath report",
+    "sweating or fainting report",
+    "radiation to arm, jaw, back, or shoulder",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "chest pain or pressure",
+    "chest pain with shortness of breath",
+    "chest pain with sweating, fainting, or severe weakness",
+    "pain radiating to arm, jaw, back, or shoulder",
+    "chest pain with abnormal vital signs according to local protocol"
+  ],
+  "escalation_criteria": [
+    "Chest pain with shortness of breath, fainting, sweating, severe weakness, radiation, or abnormal vital signs requires emergency escalation.",
+    "Any unresolved chest pain requires urgent protocol review according to local protocol."
+  ],
+  "local_actions": [
+    "Document onset, duration, pain description, associated symptoms, and vital signs for handoff.",
+    "Keep the person under direct observation while escalation is arranged."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose the cause of chest pain.",
+    "Do not provide medication, dosing, or procedure instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

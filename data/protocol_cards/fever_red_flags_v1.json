@@ -1,0 +1,39 @@
+{
+  "card_id": "FEVER-RED-FLAGS-v1",
+  "title": "Fever escalation red flags",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "temperature if available",
+    "age or pregnancy status",
+    "mental status",
+    "neck stiffness report",
+    "rash report",
+    "hydration observations",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "fever with confusion or altered mental status",
+    "fever with stiff neck",
+    "fever with non-blanching or rapidly spreading rash",
+    "fever in a very young infant",
+    "fever during pregnancy or postpartum",
+    "fever with severe dehydration signs"
+  ],
+  "escalation_criteria": [
+    "Fever plus altered mental status, stiff neck, concerning rash, pregnancy, very young infant status, or severe dehydration signs requires urgent or emergency escalation according to local protocol."
+  ],
+  "local_actions": [
+    "Document measured temperature if available, timing, associated danger signs, hydration observations, and pregnancy or age context.",
+    "Keep the person under observation while escalation is arranged if danger signs are present."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose the source of fever.",
+    "Do not provide medication or dosing instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

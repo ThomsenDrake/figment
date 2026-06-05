@@ -1,0 +1,38 @@
+{
+  "card_id": "SAFETY-BOUNDARIES-v1",
+  "title": "Safety boundaries",
+  "applies_to": [
+    "all cases",
+    "field clinic",
+    "disaster response",
+    "navigator output"
+  ],
+  "required_observations": [
+    "confirmed intake status",
+    "deterministic rule results",
+    "retrieved protocol card IDs",
+    "navigator validation result",
+    "manual correction status for audio-derived fields"
+  ],
+  "red_flags": [],
+  "escalation_criteria": [
+    "Deterministic red-flag results set the minimum protocol_urgency.",
+    "Unconfirmed audio draft text cannot trigger final red flags, clear red flags, or drive navigator output.",
+    "If no relevant protocol card is retrieved, direct the responder to local protocol, supervisor, clinician, or emergency pathway rather than improvising."
+  ],
+  "local_actions": [
+    "Surface deterministic rule results as locked context.",
+    "Keep protocol pathway suggestions card-cited and advisory.",
+    "Show uncertainty, missing observations, and validation failures in the trace."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose.",
+    "Do not prescribe or dose medication.",
+    "Do not provide autonomous triage or treatment direction.",
+    "Do not override, downgrade, omit, or reinterpret deterministic red flags.",
+    "Do not invent protocol pathways, treatments, or referral criteria beyond cited cards.",
+    "Do not treat unconfirmed audio draft text as confirmed intake."
+  ],
+  "safety_boundary": "Prototype safety-boundary card for trained-responder review only. Figment supports protocol navigation and handoff drafting; it is not a clinician, not a medical device, and not a substitute for local protocol or emergency escalation.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

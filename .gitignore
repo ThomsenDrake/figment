@@ -27,3 +27,4 @@ env/
 *.log
 tmp/
 scratch/
+.codex-workflows/runs/

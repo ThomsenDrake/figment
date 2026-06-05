@@ -1,0 +1,35 @@
+{
+  "card_id": "REFERRAL-SBAR-v1",
+  "title": "Referral and SBAR format",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response",
+    "handoff"
+  ],
+  "required_observations": [
+    "situation or reason for handoff",
+    "relevant background and timeline",
+    "objective observations only",
+    "red flags already fired",
+    "specific request or receiving pathway",
+    "source protocol card IDs"
+  ],
+  "red_flags": [],
+  "escalation_criteria": [
+    "If any red-flag rule fired, the SBAR request must preserve the deterministic urgency floor.",
+    "The SBAR note must not add facts that are absent from confirmed intake, rule results, or cited protocol cards."
+  ],
+  "local_actions": [
+    "Use Situation, Background, Assessment observations only, and Request.",
+    "Cite source protocol card IDs used for the handoff.",
+    "State uncertainty and missing observations plainly."
+  ],
+  "forbidden_actions": [
+    "Do not add a diagnosis as the assessment.",
+    "Do not add treatment, medication, or dosing instructions unless a cited card explicitly contains them.",
+    "Do not soften or downgrade deterministic red flags."
+  ],
+  "safety_boundary": "Prototype handoff-format card for trained-responder documentation support only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

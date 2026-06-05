@@ -12,6 +12,8 @@ The hackathon target:
 
 > Ship a polished Gradio Space by **June 15**, with a Nemotron Omni-powered app, a published fine-tune or adapter if feasible, an open synthetic dataset, demo traces, and a field-notes writeup.
 
+Stretch-goal note: if the core Omni submission is already green, Figment may evaluate a split non-Omni text + ASR path using base/text Nemotron 3 Nano plus Parakeet RNNT 1.1B. That path is optional, gated, and not reflected in the mockups. It does not reopen the frozen primary architecture: **Nemotron Omni remains the v1 default and submission story.**
+
 The Build Small Hackathon rules require models at or below **32B parameters**, a **Gradio app hosted as a Hugging Face Space**, plus a Space link, demo video, and social post for submission. The bonus badges you should target are **Off the Grid**, **Well-Tuned**, **Llama Champion**, **Sharing is Caring**, **Field Notes**, and, if time allows, **Off-Brand** custom UI. ([Hugging Face][1])
 
 ## Track and eligibility (read before building)
@@ -37,6 +39,7 @@ The local/offline mode works with:
 * deterministic red-flag rules
 * typed intake or canned transcript fallback if local raw-audio inference is not stable
 * local trace log
+* optional split-model local audio stretch path only if the core submission is already safe: Parakeet RNNT ASR creates provisional transcript text, then base/text Nemotron produces the same editable field-fill drafts
 
 The hosted Space should still be a true interactive demo, not only a canned trace viewer. In Space mode, Figment can call a hosted or self-hosted Nemotron Omni endpoint so judges can exercise live audio-assisted intake and protocol navigation without your laptop. Label this honestly as hosted live mode; the offline claim belongs to the local GGUF path. Do not claim local raw-audio support until the llama.cpp/Omni audio path is proven.
 
@@ -62,6 +65,8 @@ Figment should not diagnose, prescribe, or pretend to be a clinician. WHO has wa
 Nemotron 3 Nano Omni 30B-A3B Reasoning is the frozen primary model for v1. NVIDIA's model card and technical report state **31B total parameters**, roughly **3B active parameters per token**, multimodal input (**video, audio, image, text**), text output, a Mamba2-Transformer Hybrid MoE architecture, an integrated speech encoder, and up to **256k context**. ([Hugging Face][4]) ([NVIDIA][5])
 
 The compliance claim should cite the NVIDIA model-card value: **31B <= 32B**. There is one caveat: the Hugging Face sidebar currently reports 33B params for the same repo, so treat this as an organizer-confirmation risk in the risk register rather than a fact to hand-wave away.
+
+Optional stretch model constraint: the split base/text Nemotron + Parakeet path is nominally **30B + ~1.1B = ~31.1B** by model-card arithmetic, but only if organizers accept aggregate multi-model counting on the official cards. Do not combine Omni plus Parakeet in the same eligibility story. Do not call A3B a "3B model"; the cap-relevant number is total parameters.
 
 ### 5. Speech-assisted intake with human confirmation
 
@@ -156,11 +161,43 @@ Audio intake:       native Omni audio input, not a separate audio model
 
 Compliance check: NVIDIA's model card says total parameters = **31B <= 32B** (about 1B headroom). The ~3B active-per-token figure is **not** the compliance number - the org card's limit is on *total* parameters.
 
-Parameter-count caveat: the same Hugging Face model page sidebar currently reports **33B params** while the model-card body says **31B**. Ask/verify with organizers if this becomes a submission risk. If organizers require the sidebar count, fall back to the old 30B text-only Nemotron plan.
+Parameter-count caveat: the same Hugging Face model page sidebar currently reports **33B params** while the model-card body says **31B**. Ask/verify with organizers if this becomes a submission risk. If organizers require the sidebar count, fall back to the non-Omni text-only Nemotron plan; add Parakeet only if aggregate multi-model counting is explicitly acceptable.
 
 Adapter ledger: keep the LoRA rank small and record the exact adapter parameter count before publication. If organizers count adapters additively and the count threatens the 32B cap, publish the base model demo and drop the Well-Tuned badge rather than risking eligibility.
 
 Omni audio specifics: the model card supports wav/mp3 audio input up to 1 hour with 8 kHz+ sampling and word-level timestamps. For transcription-style use, use non-thinking mode and constrained JSON output for the draft-intake pass. ([Hugging Face][4])
+
+## Optional stretch: split-model local audio path
+
+This is a stretch goal only, activated after the frozen Omni path, five tabs, hosted Space, local text proof, tests, demo assets, and user-test plan are already green.
+
+```text
+Stretch text model:       nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+Stretch raw-base model:   nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-Base-BF16 (fine-tune research only, not default demo navigation)
+Stretch local serving:    bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF (Q4_K_M / Q5_K_M after local proof)
+Stretch audio model:      nvidia/parakeet-rnnt-1.1b
+Stretch adapter:          optional only if aggregate model + adapter accounting still fits
+```
+
+Model-card arithmetic puts the optional split stack at roughly **30B + ~1.1B = ~31.1B nominal parameters**. Treat that as organizer-dependent, not guaranteed. A stricter exact/additive accounting from Hugging Face API or tensor metadata may put the text model plus Parakeet over 32B, and any adapter makes the margin tighter. If organizers require exact/additive counts, this path must be dropped or run text-only. ([Hugging Face][12]) ([Hugging Face][13]) ([Hugging Face][14]) ([Hugging Face][15])
+
+Use a hard gate so the stretch path cannot silently become a fallback:
+
+```text
+MODEL_STACK=omni_native            # default, frozen primary
+MODEL_STACK=base_nano_parakeet     # stretch-only, never automatic fallback
+MODEL_BACKEND=hosted_omni|llama_cpp|hosted_text_nemotron|canned
+AUDIO_BACKEND=omni_native|parakeet_nemo|canned|none
+ENABLE_AUDIO_INTAKE=false
+ALLOW_STRETCH_STACK=false
+```
+
+Activation rules:
+
+* `omni_native` remains the default for README, social copy, demo video, and the hosted Space.
+* `base_nano_parakeet` requires `ALLOW_STRETCH_STACK=true` plus explicit confidence that the multi-model parameter story is acceptable.
+* `canned` is reliability fallback only and must be labeled in the UI/trace.
+* The stretch path does not add a tab, change the mockups, alter the navigator schema, bypass confirmation, or change deterministic red-flag authority.
 
 ## Performance budget
 
@@ -202,17 +239,19 @@ Structured inputs:
 * available supplies
 * free-text responder note
 
-Optional Omni audio-assisted intake:
+Optional audio-assisted intake:
 
 * "Dictate intake" audio recorder/upload in the Field Intake tab
-* Omni transcript displayed as editable text
+* Primary path: Omni native audio -> transcript + editable field suggestions
+* Stretch path, if explicitly enabled: Parakeet RNNT ASR -> transcript -> base/text Nemotron field-fill suggestions
+* transcript displayed as editable text
 * field-fill suggestions labeled `Audio draft`
 * source snippet shown for each proposed value when possible
 * source timecode shown when available
 * accept/edit/reject/clear controls for suggestions
 * `Confirm intake` gate before deterministic rules, retrieval, or navigator output can run
 
-Audio intake is a convenience layer over the intake form, not a sixth tab and not a safety-bearing authority. Typed intake must remain fully functional when `ENABLE_AUDIO_INTAKE=false`.
+Audio intake is a convenience layer over the intake form, not a sixth tab and not a safety-bearing authority. Typed intake must remain fully functional when `ENABLE_AUDIO_INTAKE=false`. The stretch path does not require mockup changes.
 
 ### 2. Risk Check
 
@@ -448,7 +487,10 @@ Audio field-fill suggestions are a separate pre-navigation object and do **not**
 ```json
 {
   "task": "audio_intake_draft",
-  "audio_model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
+  "audio_intake_path": "omni_native | canned_audio_demo | typed_only | audio_received_needs_transcript_or_model | parakeet_rnnt_plus_text_nemotron",
+  "audio_model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 | nvidia/parakeet-rnnt-1.1b",
+  "field_fill_model_id": null,
+  "audio_runtime": "omni_native | hosted_omni | parakeet_nemo | canned | none | unprocessed_audio",
   "transcript": "",
   "unclear_spans": [],
   "suggested_fields": [
@@ -463,9 +505,15 @@ Audio field-fill suggestions are a separate pre-navigation object and do **not**
   ],
   "missing_or_unclear_fields": [],
   "provisional_red_flag_mentions": [],
-  "confirmed_intake_required": true
+  "confirmed_intake_required": true,
+  "confirmation_status": "unconfirmed | confirmed",
+  "raw_audio_stored": false
 }
 ```
+
+For the stretch path, `field_fill_model_id` becomes `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` and the trace records `MODEL_STACK=base_nano_parakeet`. The trace should also record `raw_audio_stored=false`, `confirmation_status`, manual corrections, the confirmed-intake hash, fired rule IDs, retrieved card IDs, prompt-template hash, validator result, and validation failures. Do not publish raw audio or chain-of-thought.
+
+If a user uploads or records audio but no transcript/provider payload is available, the draft path must be labeled `audio_received_needs_transcript_or_model`, return no field suggestions, and remain safe to confirm as typed-only intake. Canned transcript mode must be labeled `canned_audio_demo`, not `omni_native`.
 
 After medic confirmation, accepted or edited suggestions become ordinary structured intake and responder-note values. The final navigator output should still use `structured_field`, `responder_note`, or `protocol_card` as fact sources; audio provenance belongs in the trace.
 
@@ -500,6 +548,7 @@ State these in `README.md`, `docs/model_card.md`, and `docs/dataset_card.md` —
 Model / adapter: inherits the NVIDIA Nemotron model license (cite exact upstream terms in the model card)
 Dataset:         CC-BY-4.0 synthetic dataset
 Code:            Apache-2.0
+Stretch ASR:     Parakeet RNNT is CC-BY-4.0; include attribution if the stretch path is demo-visible
 ```
 
 Data handling:
@@ -509,6 +558,7 @@ Data handling:
 * Training data is **synthetic with no real PHI** (reaffirms the §6 generator rule); demo cases are fictional.
 * Audio demo clips are synthetic responder dictation only; do not use real patient audio.
 * Published traces may include transcript text and accepted/edited/rejected field suggestions, but must not include raw audio bytes or files.
+* Parakeet ASR output, if used, is untrusted transcript text until the medic confirms or edits it; it cannot trigger final red flags or navigation by itself.
 
 ---
 
@@ -821,7 +871,9 @@ Gradio Blocks UI
   ↓
 Optional audio intake
   ↓
-audio_intake.py Omni audio transcription + editable field-fill drafts
+audio_intake.py provider-neutral editable field-fill drafts
+  ├─ primary: Omni native audio transcription + field-fill draft
+  └─ stretch: Parakeet RNNT transcript → base/text Nemotron field-fill draft
   ↓
 Medic confirms intake
   ↓
@@ -835,9 +887,10 @@ prompt_builder.py constrained protocol-navigator prompt
   ↓
 navigator.py AI protocol navigator
   ↓
-model_client.py hosted Omni / local GGUF adapter
+model_client.py hosted Omni / local GGUF / stretch text adapter
   ↓
 Nemotron 3 Nano Omni 31B-A3B
+  or stretch base/text Nemotron 3 Nano 30B-A3B
   ↓
 validators.py output validator
   ↓
@@ -848,9 +901,11 @@ trace.py trace export
 
 Audio intake implementation contract:
 
-* `audio_intake.py` accepts mic/uploaded audio and prepares it for Omni-compatible audio input.
-* `audio_intake.py` pins the same Omni model ID as `model_client.py` and exposes transcript + draft field suggestions, not final intake.
+* `audio_intake.py` accepts mic/uploaded audio and prepares it for the configured audio backend.
+* `audio_intake.py` pins the same Omni model ID as `model_client.py` in primary mode and exposes transcript + draft field suggestions, not final intake.
+* In stretch mode, `audio_intake.py` runs Parakeet RNNT for transcript text, then uses base/text Nemotron only to produce editable draft field suggestions.
 * `ENABLE_AUDIO_INTAKE=false` must let the Space cold-boot and run typed/demo-case intake with no audio path loaded.
+* `ALLOW_STRETCH_STACK=false` must prevent Parakeet/NeMo dependencies from loading.
 * Manual edits always win over audio drafts.
 * No navigator run is allowed while intake is unconfirmed.
 * Trace shows audio provenance and correction status, but not raw audio.
@@ -903,6 +958,19 @@ Nemotron Omni Q4 GGUF text navigator
 
 Local raw-audio Omni is a stretch goal, not a guaranteed off-grid claim. The local/off-grid proof may use typed intake or a canned transcript if audio support is not stable.
 
+Optional split-model local audio stretch:
+
+```text
+Gradio app
+Parakeet RNNT through NeMo for synthetic/local audio transcript
+base/text Nemotron 3 Nano GGUF through llama.cpp for field-fill draft + navigation
+SQLite retrieval
+Rules engine
+Validators and trace export
+```
+
+This path is a spike, not the primary local proof. It strengthens the Off the Grid story only if both ASR and text navigation run locally with no network. Keep Parakeet/NeMo in an optional dependency path; do not let a heavy ASR import break typed intake, canned transcript mode, or the hosted Space cold boot.
+
 ### Hugging Face Space mode
 
 Primary hosted path:
@@ -913,14 +981,18 @@ Primary hosted path:
 | **Canned transcript + live text navigator** | Reliability path if hosted audio fails but hosted text navigation still works |
 | **Canned trace fallback** | Emergency reliability path if the hosted model endpoint, quota, or cold start fails |
 | **L40S/A100 upgraded Space** | Optional stronger self-hosted Omni path if available and reliable |
+| **Split-model audio stretch** | Optional post-core path; Parakeet ASR plus base/text Nemotron, disabled unless explicitly gated and never the default hosted story |
 
 Implementation notes:
 
 * Put `HF_MODEL_ID`, `OMNI_ENDPOINT_URL`, and any required inference token/endpoint secret in the Space environment.
+* Store `NVIDIA_API_KEY`, endpoint URLs, and HF tokens as Space secrets; keep non-secret selectors such as `MODEL_STACK`, `MODEL_BACKEND`, and `AUDIO_BACKEND` as variables.
 * Put `ENABLE_AUDIO_INTAKE=false` by default for the first deploy; turn it on only after the hosted Omni audio path cold-boots reliably.
+* First cold boot must work with no model secret present: typed intake works, audio is disabled, canned transcript/demo fallback is visible, and the trace labels the fallback honestly.
 * Because the Omni HF page is not deployed by an HF Inference Provider, hosted Omni requires a self-hosted endpoint, NVIDIA endpoint/NIM-style provider path, paid Space GPU, or a clearly labeled fallback. ([NVIDIA][11])
 * Keep rules, retrieval, validation, trace export, and safety banners identical between local and hosted modes.
 * Do not describe hosted mode as off-grid; use it for the true public demo. Use local GGUF mode as the offline/off-grid proof.
+* Do not include Parakeet/NeMo in default hosted requirements unless the stretch path has been proven and it does not threaten cold start.
 
 Hugging Face pricing lists CPU Basic as 2 vCPU/16 GB RAM free, CPU Upgrade as 8 vCPU/32 GB RAM, and 1x L4 as 8 vCPU/30 GB RAM with 24 GB VRAM. ([Hugging Face][10]) Since Omni FP8 wants L40S-class 48 GB VRAM and BF16 wants H100/A100-80GB-class hardware, CPU Basic/Upgrade and L4 are poor fits for self-hosting the full model. A hosted Omni endpoint/model is the better Space path for a true hosted demo; your Mac remains the offline proof for local text navigation after GGUF verification.
 
@@ -1054,6 +1126,31 @@ Space deployed with hosted Omni live mode
 ```
 
 This is the day to chase the **Off-Brand** badge if it does not jeopardize the core app.
+
+---
+
+## Optional stretch gate: split-model audio path
+
+Do this only after Space, demo cases, local text proof, tests, final assets, and the user-test path are not at risk. Treat it as a timeboxed spike, not a required submission milestone.
+
+Activation checklist:
+
+* Confirm organizer interpretation of multi-model parameter accounting: rounded model-card math is about 31.1B, but exact/additive accounting may exceed 32B.
+* Prove Parakeet local ASR on one synthetic dictated Case 1 clip.
+* Prove base/text Nemotron 3 Nano GGUF boots locally through llama.cpp and produces valid navigator JSON.
+* Add `MODEL_STACK=base_nano_parakeet`, `AUDIO_BACKEND=parakeet_nemo`, and `ALLOW_STRETCH_STACK=true` only after both proofs pass.
+* Run audio confirmation, manual-correction persistence, red-flag lock, validator, and trace tests on the stretch path.
+* Update `README.md`, `docs/model_card.md`, and license/attribution only if the path is demo-visible.
+
+Kill criteria:
+
+* organizer count is exact/additive and the split stack exceeds 32B
+* Parakeet/NeMo cold start or local latency threatens the Space or demo
+* local ASR is not proven on the synthetic clip
+* transcript errors can affect rules/navigation before confirmation
+* the stretch path muddies the "single multimodal Omni primary" submission story
+
+If any kill criterion trips, drop the standalone ASR stretch and keep Omni native audio, typed intake, and canned transcript fallbacks.
 
 ---
 
@@ -1335,6 +1432,7 @@ Runtime modes:
   Local/offline proof: Omni GGUF text-navigation path through llama.cpp on the Mac after verification.
   Fallback only: canned traces if hosted model/Space reliability fails.
   Audio intake: native Omni audio input, optional and disabled-by-default in hosted mode until cold-boot is reliable.
+  Stretch only: base/text Nemotron 3 Nano + Parakeet RNNT local audio path after the core submission is green and organizer counting is acceptable.
 
 Audio confirmation contract:
   Audio creates editable transcript + audio draft field suggestions only.
@@ -1366,9 +1464,9 @@ docs/safety_statement.md draft
 
 | Badge                 | Plan                                                                 | Risk   |
 | --------------------- | -------------------------------------------------------------------- | ------ |
-| **Off the Grid**      | Local mode has no runtime cloud APIs: local Omni GGUF text navigator, local retrieval, local rules. Hosted Omni audio/text mode must be labeled separately and does not count toward this badge. | Medium |
+| **Off the Grid**      | Local mode has no runtime cloud APIs: local Omni GGUF text navigator, local retrieval, local rules. Hosted Omni audio/text mode must be labeled separately and does not count toward this badge. Split-model Parakeet audio strengthens this only if ASR also runs locally. | Medium |
 | **Well-Tuned**        | Publish Figment LoRA/adapter targeting Omni **and demo the app running it** (a base-only demo forfeits this badge). Drop this badge if adapter count/tooling threatens eligibility. | High |
-| **Llama Champion**    | Run Omni GGUF through llama.cpp after local verification.             | Medium |
+| **Llama Champion**    | Run Omni GGUF through llama.cpp after local verification. Stretch base/text Nemotron GGUF can be a secondary local proof, but it does not replace the primary badge story unless Omni GGUF fails and the submission copy is updated honestly. | Medium |
 | **Sharing is Caring** | Publish trace JSONs on Hub.                                          | Low    |
 | **Field Notes**       | Write build report with eval table. Org card marks this **_(Tentative)_** — may not be awarded; pursue for the writeup's own value, don't bank the points. | Low    |
 | **Off-Brand**         | Custom Gradio Blocks CSS.                                            | Medium |
@@ -1424,6 +1522,8 @@ Hosted Space returns live Omni output
 Local GGUF mode runs the same case without internet, using typed intake or canned transcript if local raw audio is not verified
 ```
 
+Stretch split-model audio is **not** required for minimum, strong, or winning submission. If activated, it is done only when Parakeet transcript, base/text Nemotron field-fill draft, medic confirmation, deterministic red flags, navigation, validation, and trace export all pass the same tests as the Omni audio path.
+
 ## Minimum acceptable submission
 
 Three artifacts are **non-negotiable in every tier** — a submission missing any one is invalid per the org rules:
@@ -1444,6 +1544,7 @@ On top of that mandatory floor, if everything else goes sideways, ship:
 * trace viewer
 * field notes
 * no fine-tune
+* no split-model Parakeet stretch path
 
 ## Strong submission
 
@@ -1455,6 +1556,7 @@ On top of that mandatory floor, if everything else goes sideways, ship:
 * dataset published
 * custom UI
 * traces published
+* optional split-model audio path remains out of scope unless all stretch gates are already satisfied
 
 ## Winning submission
 
@@ -1577,6 +1679,8 @@ Figment keeps working.
 Built for the Build Small Hackathon, Figment runs NVIDIA Nemotron 3 Nano Omni as a single <=32B multimodal model for audio-assisted intake and protocol navigation. Deterministic rules flag danger signs; the AI drafts intake fields for medic confirmation, navigates protocol cards, marks uncertainty, asks for missing observations, builds card-cited responder checklists, and drafts SBAR handoffs for field clinics and disaster response.
 ```
 
+If the split-model Parakeet stretch path is demo-visible, do not use the "single multimodal model" sentence for that segment. Label it separately as an experimental local audio stretch, and keep the primary hook Omni-first.
+
 The winning move is to make Figment feel humble, specific, and useful. Not “AI doctor.” More like: **a field protocol binder that can read messy notes, cite itself, ask the right next questions, and stop at protocol boundaries.**
 
 ---
@@ -1587,7 +1691,7 @@ The winning move is to make Figment feel humble, specific, and useful. Not “AI
 
 | Risk | Trigger (how you know) | Fallback | Owner-day |
 | ---- | ---------------------- | -------- | --------- |
-| Omni parameter-count ambiguity | NVIDIA model-card body says 31B, but HF sidebar reports 33B | Ask organizers; cite NVIDIA model-card value; if rejected, fall back to the prior 30B text-only Nemotron plan | June 5 / 12 |
+| Omni parameter-count ambiguity | NVIDIA model-card body says 31B, but HF sidebar reports 33B | Ask organizers; cite NVIDIA model-card value; if rejected, fall back to text-only Nemotron only if its own count is accepted; add Parakeet only if aggregate multi-model accounting is explicitly acceptable | June 5 / 12 |
 | Modal Omni LoRA job fails or OOMs | Job errors, unsupported custom-code model, or needs > 80 GB VRAM | Ship base Omni or prior pilot adapter; drop Well-Tuned if needed | June 10 |
 | Model too slow for a live demo | First-token, audio draft latency, or tok/s below the §2 performance budget | Step down the §2 degradation ladder: 16k→8k ctx → typed/canned transcript → smaller quant → canned-response mode | June 11 |
 | Synthetic critique keep-rate too low | < ~40% kept after critique + validate | Lower the target to 2,000 examples; invest more in cards/rules; accept a smaller train set | June 8 |
@@ -1596,6 +1700,11 @@ The winning move is to make Figment feel humble, specific, and useful. Not “AI
 | Local Omni/llama.cpp path fails | GGUF will not boot, audio unsupported, or latency unusable | Use typed intake + hosted/canned text navigator; do not claim local raw-audio support | June 11 |
 | Hosted audio privacy risk | Space sends audio/media to hosted endpoint | Disable hosted audio for real/sensitive inputs; use synthetic audio only; keep real user test local/de-identified | June 12 / 13 |
 | Stale license language | Plan still cites old standalone-audio or text-only Nemotron license language | Replace with NVIDIA Open Model Agreement and NOTICE/attribution requirements | June 5 |
+| Split-stack parameter accounting rejected | Organizers count exact/additive model parameters and base/text Nemotron + Parakeet exceeds 32B | Drop Parakeet stretch; use Omni, typed intake, or text-only Nemotron fallback only if eligible | Stretch gate |
+| Stretch model story drift | README, social copy, or demo says "single multimodal model" while showing Parakeet + text Nemotron | Keep Omni as primary copy; label stretch mode experimental; remove stretch from demo if it confuses the story | Stretch gate / June 14 |
+| Parakeet/NeMo runtime fragility | Optional ASR import breaks cold boot, needs unavailable hardware, or latency is poor | Keep `ALLOW_STRETCH_STACK=false`; use Omni native audio, typed intake, or canned transcript | Stretch gate |
+| ASR transcript over-trust | Parakeet mistranscription changes red-flag meaning or prompt-injection text is treated as instruction | Treat transcript as untrusted draft only; require confirmation; fail closed in validators; never let transcript set final red flags | June 11 / Stretch gate |
+| Stretch license/attribution gap | Parakeet appears in demo/model card without CC-BY-4.0 attribution | Add Parakeet attribution or remove the stretch path from public demo materials | Stretch gate / June 14 |
 | Fine-tune regresses safety | Any June 10 kill criterion trips (recall down, unsafe diagnosis up, JSON breaks, stops citing, over-refusal) | Roll back to base or the prior checkpoint; publish base as the demo model | June 10 |
 | AI invents or overstates a protocol pathway | Selected pathway is not in retrieved cards, or rationale implies diagnosis/treatment | Force card-only output, tighten validator, add targeted repair examples, or ship canned traces | June 9 / 12 |
 | AI downgrades deterministic red flags | Output urgency is below the rules engine result, or language softens escalation cues | Fail validation; show deterministic warning; repair prompt/fine-tune or fall back to base/canned traces | June 7 / 10 |
@@ -1610,6 +1719,11 @@ Unit-test the safety-critical deterministic components (they must be boringly co
 * `schemas.py` — enum fields (`protocol_urgency`) reject out-of-vocabulary values.
 * `audio_intake.py` — produces provisional suggestions only, never overwrites manual values, blocks navigation until confirmation, and records audio provenance without raw audio.
 * `navigator.py` — mock and live outputs preserve red-flag locks, cite cards for every selected pathway, avoid diagnosis/prescribing, and keep checklist/SBAR facts grounded.
+* `config.py` — rejects illegal `MODEL_STACK`, `MODEL_BACKEND`, `AUDIO_BACKEND`, `ENABLE_AUDIO_INTAKE`, and `ALLOW_STRETCH_STACK` combinations.
+* Space smoke test — with no model secrets, app boots, typed intake works, audio is disabled, canned fallback is visible, and trace labels fallback mode.
+* Hosted timeout test — mock Omni endpoint timeout falls back without changing confirmed intake, red-flag results, or validator state.
+* Optional Parakeet tests — mark `pytest.mark.optional_nemo`; skip unless NeMo is installed; assert transcript is provisional, manual corrections persist, and navigation remains blocked until confirmation.
+* Local llama.cpp smoke — health check plus one fixture returning valid navigator JSON for the configured local model.
 
 Use small gold fixtures under `tests/`; run with `pytest`. "Do unit tests pass?" is part of the §13 daily checklist. Owner-days: June 6 (scaffold tests with the skeleton), June 7 (rules/validators tests once those modules exist).
 
@@ -1624,3 +1738,7 @@ Use small gold fixtures under `tests/`; run with `pytest`. "Do unit tests pass?"
 [9]: https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF "unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF"
 [10]: https://huggingface.co/pricing?utm_source=chatgpt.com "Pricing"
 [11]: https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning "NVIDIA Nemotron 3 Nano Omni endpoint"
+[12]: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+[13]: https://huggingface.co/nvidia/parakeet-rnnt-1.1b "nvidia/parakeet-rnnt-1.1b"
+[14]: https://huggingface.co/bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF "bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF"
+[15]: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-Base-BF16 "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-Base-BF16"

@@ -1,0 +1,38 @@
+{
+  "card_id": "PED-DEHYD-RED-FLAGS-v1",
+  "title": "Pediatric dehydration red flags",
+  "applies_to": [
+    "pediatric",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "age or estimated age",
+    "mental status",
+    "ability to drink or keep fluids down",
+    "urine output",
+    "mouth and eye appearance",
+    "perfusion observations used by local protocol"
+  ],
+  "red_flags": [
+    "lethargy or difficult to arouse",
+    "no urine reported for a prolonged period",
+    "sunken eyes with very dry mouth",
+    "unable to keep fluids down",
+    "signs of shock or poor perfusion"
+  ],
+  "escalation_criteria": [
+    "Any listed red flag requires urgent or emergency escalation according to local protocol.",
+    "If key observations are missing, collect them only when doing so does not delay escalation."
+  ],
+  "local_actions": [
+    "Keep the child under direct observation while escalation is arranged.",
+    "Document the reported fluid intake, urine output, and mental-status observations for handoff."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose dehydration severity as a final clinical diagnosis.",
+    "Do not provide medication, oral rehydration, or IV-fluid dosing instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

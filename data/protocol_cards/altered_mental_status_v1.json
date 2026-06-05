@@ -1,0 +1,38 @@
+{
+  "card_id": "AMS-RED-FLAGS-v1",
+  "title": "Altered mental status red flags",
+  "applies_to": [
+    "all ages",
+    "field clinic",
+    "disaster response"
+  ],
+  "required_observations": [
+    "baseline mental status if known",
+    "current alertness",
+    "confusion or behavior change",
+    "seizure report",
+    "head injury or toxin exposure report",
+    "available vital signs"
+  ],
+  "red_flags": [
+    "new confusion or altered mental status",
+    "unresponsive or difficult to arouse",
+    "new seizure",
+    "severe weakness with confusion",
+    "altered mental status after injury, toxin exposure, fever, or breathing concern"
+  ],
+  "escalation_criteria": [
+    "New altered mental status, unresponsiveness, or seizure requires emergency escalation according to local protocol.",
+    "If the person cannot provide reliable history, treat missing information as important for handoff rather than reassurance."
+  ],
+  "local_actions": [
+    "Document baseline if known, current alertness, timeline, associated symptoms, and vital signs for handoff.",
+    "Keep the person under direct observation while escalation is arranged."
+  ],
+  "forbidden_actions": [
+    "Do not diagnose the cause of altered mental status.",
+    "Do not provide medication, dosing, restraint, or procedure instructions unless a local clinician or protocol explicitly provides them."
+  ],
+  "safety_boundary": "Prototype protocol navigation card for trained-responder review only. It is not a clinical guideline and cannot diagnose, prescribe, dose, triage autonomously, or override local protocol.",
+  "source_note": "Prototype protocol card derived from public guideline concepts. Not a clinical guideline."
+}

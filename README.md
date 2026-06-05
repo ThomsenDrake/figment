@@ -2,14 +2,14 @@
 
 **Offline protocol support for field clinics and disaster response.**
 
-Figment uses deterministic rules for danger signs and an AI protocol navigator for messy field notes, missing-observation planning, card-cited responder checklists, and SBAR handoffs. The hosted Space uses HF-hosted Nemotron 3 Nano for a true live demo; local llama.cpp mode is the offline/off-grid proof. (The app is in active development — see **Status** below.)
+Figment uses deterministic rules for danger signs and an AI protocol navigator for messy field notes, missing-observation planning, card-cited responder checklists, and SBAR handoffs. The frozen primary model path is NVIDIA Nemotron 3 Nano Omni: hosted or self-hosted Omni powers the live Space demo, while local GGUF/llama.cpp mode is the offline text-navigation proof. (The app scaffold is runnable and still under active development — see **Status** below.)
 
 > ⚠️ **Figment is not a medical device.** It does not diagnose, prescribe, or replace a clinician. It is a prototype for protocol navigation, escalation support, and documentation in low-connectivity environments, for use by trained responders. See [Safety & non-goals](#safety--non-goals).
 
-- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The local model runs today; the Figment app is being built per the [workback plan](docs/figment-workback-plan.md).
+- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The Gradio scaffold, deterministic rules, canned fallback, traces, and tests run locally; hosted Omni and local GGUF model plumbing remain integration work.
 - **Track:** 🏡 Backyard AI (solve a real problem for a specific, real person you know).
 - **Built for:** a real disaster-response volunteer trained in disaster-response first aid and local protocol use; name withheld for privacy.
-- **Model:** NVIDIA **Nemotron 3 Nano 30B-A3B** (30B total params ≤ 32B limit), run locally through **llama.cpp**.
+- **Model:** NVIDIA **Nemotron 3 Nano Omni 30B-A3B Reasoning** as the v1 default. The model-card body reports 31B total parameters; the workback plan tracks the HF-sidebar count ambiguity and fallback story.
 
 ---
 
@@ -25,9 +25,9 @@ The design goal is restraint. Figment is **a field protocol binder that can talk
 
 ## What it does
 
-Figment is being built as a [Gradio](https://www.gradio.app/) app with five tabs. This is the **target feature set** — only the local model runs today (see the Status note above); the tabs below describe the intended behavior:
+Figment is a [Gradio](https://www.gradio.app/) app with five frozen tabs:
 
-1. **Field Intake** — structured capture of setting, patient age, pregnancy status, chief concern, symptoms, vitals, allergies, medications, available supplies, and a free-text responder note.
+1. **Intake** — structured capture of setting, patient age, pregnancy status, chief concern, symptoms, vitals, allergies, medications, available supplies, and a free-text responder note. Optional audio intake drafts fields only; typed/edited values must be confirmed before rules or navigation run.
 2. **Risk Check** — deterministic red-flag rules fire **before** the LLM and set the minimum urgency floor (e.g. altered mental status, severe respiratory distress, chest pain, stroke signs, pregnancy bleeding, pediatric lethargy, severe dehydration signs, fever escalation criteria, wound infection escalation criteria).
 3. **Protocol Guidance** — local retrieval returns 3–6 relevant protocol cards via SQLite FTS/BM25; the AI navigator selects candidate pathways, flags uncertainty, and plans missing observations.
 4. **Navigator Output + Handoff** — shows candidate protocol pathways, a responder checklist, missing observations, an SBAR note, a referral summary, and source protocol-card IDs.
@@ -44,7 +44,7 @@ Gradio Blocks UI
   → retrieval.py    (SQLite FTS protocol search)
   → prompt_builder.py (constrained navigator prompt; cards + rules injected)
   → navigator.py      (AI protocol navigator)
-  → model_client.py   (HF-hosted Nemotron or local llama.cpp)
+  → model_client.py   (hosted/self-hosted Omni, local llama.cpp, or canned fallback)
   → validators.py   (output validator: JSON, citations, safety checks)
   → sbar.py         (referral note renderer)
   → trace.py        (trace export)
@@ -59,23 +59,19 @@ Two principles make this safe rather than chatty:
 
 ## The model & the ≤32B constraint
 
-The Build Small Hackathon caps models at **32B total parameters**. Figment uses **NVIDIA Nemotron 3 Nano 30B-A3B** — a MoE hybrid Mamba-Transformer with **30B total** parameters (≈3B active per forward pass).
+The Build Small Hackathon caps models at **32B total parameters**. Figment's primary path is **NVIDIA Nemotron 3 Nano Omni 30B-A3B Reasoning** — a multimodal MoE hybrid Mamba-Transformer with an integrated speech encoder and roughly 3B active parameters per token.
 
-> **Compliance:** total parameters = **30B ≤ 32B** (~2B headroom). The ~3B *active* figure is **not** the compliance number — the limit is on *total* parameters. A LoRA adapter adds far less than 1B trainable params, so base+adapter stays ≤ 32B.
+> **Compliance note:** NVIDIA's model-card body reports **31B total parameters**, which fits the 32B cap. The Hugging Face sidebar count has differed, so the workback plan keeps this as a submission risk to verify with organizers. The ~3B *active* figure is **not** the compliance number — the limit is on *total* parameters.
 
-Local quantization (from the [Bartowski GGUF repo](https://huggingface.co/bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF), verified June 2026):
+Local/off-grid proof targets the Omni GGUF route after verification:
 
-| Quant | Size | Use |
-| ----- | ---- | --- |
-| Q4_K_M | 24.66 GB | **primary local demo** |
-| Q5_K_M | 26.15 GB | viable alternative |
-| Q6_K | 33.43 GB | tight on 48 GB unified memory |
-| Q8_0 | 33.51 GB | tight |
-| BF16 | 63.18 GB | training base (not for local inference) |
+| Artifact | Use |
+| -------- | --- |
+| `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | primary hosted/self-hosted Omni model ID |
+| `ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M` | target local text-navigation proof through llama.cpp |
+| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` + `nvidia/parakeet-rnnt-1.1b` | stretch-only split stack, disabled unless `ALLOW_STRETCH_STACK=true` |
 
-> Q6_K and Q8_0 are near-identical in size — a genuine quantization artifact of this MoE/hybrid model, not a typo.
-
-Reference dev/demo machine: an M4 Pro MacBook Pro with 48 GB RAM (24.66 GB Q4_K_M weights leave ~23 GB for runtime, KV cache, Gradio, and the OS).
+Reference dev/demo machine: an M4 Pro MacBook Pro with 48 GB RAM. Local raw-audio Omni remains experimental until the GGUF audio/projection path is proven; the safe local proof may use typed intake or a canned transcript.
 
 ---
 
@@ -91,15 +87,20 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 ```
 
-### 1. Run the model locally (works today)
+### 1. Run the app locally
 
-**Prerequisites:** [llama.cpp](https://github.com/ggml-org/llama.cpp) and ~25 GB free RAM for the Q4_K_M weights (Python 3.10+ for the app once it lands).
+The scaffold runs without a live model by using the explicit canned fallback:
+
+```bash
+python app.py
+```
+
+To target a local OpenAI-compatible llama.cpp server after the Omni GGUF path is verified:
 
 ```bash
 brew install llama.cpp
-
 llama-server \
-  -hf bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_M \
+  -hf ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M \
   --ctx-size 16384 \
   --port 8001 \
   --host 127.0.0.1 \
@@ -107,30 +108,21 @@ llama-server \
   --top-p 0.9
 ```
 
-This exposes an OpenAI-compatible endpoint at `http://127.0.0.1:8001`.
+Set `MODEL_BACKEND=llama_cpp` and `LLAMA_BASE_URL=http://127.0.0.1:8001` in `.env`.
 
-### 2. Run the Figment app (in development)
-
-> The app (`app.py` + the `figment/` package) is being built per the [workback plan](docs/figment-workback-plan.md). When it lands:
-
-```bash
-pip install -r requirements.txt
-python app.py          # launches the Gradio app against the local llama-server
-```
-
-### 3. Hosted demo
+### 2. Hosted demo
 
 A Gradio Space is hosted under the **build-small-hackathon** Hugging Face org:
 
 [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment)
 
-The primary hosted path is a live Gradio demo powered by HF-hosted Nemotron 3 Nano. Canned traces are fallback only if hosted model, quota, or cold-start reliability fails.
+The primary hosted path is a live Gradio demo powered by a hosted or self-hosted Nemotron Omni endpoint. Canned responses and traces are fallback only if hosted model, quota, or cold-start reliability fails.
 
 ---
 
 ## Repository layout
 
-This repo currently holds the planning docs; the application code is added during the build window. Target structure (see the [workback plan §4](docs/figment-workback-plan.md)):
+This repo now holds the runnable scaffold plus the planning docs. Current structure:
 
 ```text
 figment/
@@ -139,18 +131,19 @@ figment/
                         #   prompt_builder, validators, trace, sbar
   data/
     protocol_cards/     # 10 prototype cards (JSON)
-    synthetic/          # train / validation / test / rejected (JSONL)
-    eval/               # gold + adversarial cases, eval results
-  scripts/              # build_fts, generate/critique/validate, make_sft, run_eval, export_traces
-  modal/                # fine-tune + eval jobs (finetune_4b, finetune_30b, eval_batch, export_adapter)
+  scripts/              # build_fts now; generation/eval scripts later
   traces/               # exported demo traces
   docs/                 # field notes, model/dataset/safety cards, this plan
-  release/              # demo video, social post
 ```
 
 Available now:
 
 ```text
+app.py                                        # Gradio app scaffold
+figment/                                      # protocol engine, model/audio adapters, trace/validators
+data/protocol_cards/                          # 10 prototype protocol cards
+traces/                                       # regenerated demo traces
+tests/                                        # regression tests for safety, audio, rules, app smoke
 docs/figment-workback-plan.md                 # the full day-by-day build plan
 docs/build-small-hackathon-org-card.md         # hackathon rules (source of truth)
 docs/prerequisites.md                          # setup contract for local, hosted, and Modal work
@@ -164,7 +157,7 @@ Key docs: [workback plan](docs/figment-workback-plan.md) · [prerequisites](docs
 
 ## Data & evaluation
 
-- **Synthetic data, not memorized facts.** 5,000–10,000 candidate cases are generated by teacher models (Mistral/MiniMax, build-time only), cross-critiqued, and filtered by a deterministic validator down to ~2,000–4,000 kept examples. No real PHI is used.
+- **Synthetic data, not memorized facts.** Future 5,000–10,000 candidate cases are generated by teacher models (Mistral/MiniMax, build-time only), cross-critiqued, and filtered by a deterministic validator down to ~2,000–4,000 kept examples. No real PHI is used.
 - **Behavior, not knowledge.** Training teaches the model to cite cards, ask for missing info, escalate red flags, produce SBAR, and refuse unsafe requests.
 - **Eval before training.** A 50–100 case gold set scores the model on measurable behavior:
 
@@ -179,9 +172,9 @@ Key docs: [workback plan](docs/figment-workback-plan.md) · [prerequisites](docs
 | SBAR factuality | ≥ 95% |
 | Prompt-injection compliance failure | 0 critical |
 
-> These are **target thresholds, not measured results** — no evaluation has been run yet (the model + app are still being built).
+> These are **target thresholds, not measured results** — no full evaluation has been run yet. The scaffold and safety regressions are covered by local tests; model evaluation is still planned.
 
-Deterministic metrics run in `scripts/run_eval.py`; judgment metrics use a held-out judge model.
+Deterministic eval scripts are planned in the workback plan; judgment metrics use a held-out judge model once the gold set exists.
 
 ---
 
@@ -193,7 +186,8 @@ Figment is deliberately scoped. **It will not:**
 - **prescribe or dose medication** — doses appear only if a cited card contains them;
 - **replace a clinician** — the trained responder remains the decision-maker;
 - **serve untrained users** — it is a tool for trained responders;
-- **store or transmit PHI** — patient inputs stay on-device and are never logged or sent off-device;
+- **store PHI or raw audio** — traces scrub raw audio-like payloads and uploaded filenames;
+- **hide hosted-mode data flow** — hosted Space mode may send synthetic or de-identified text/audio to the configured Omni endpoint, while local mode keeps runtime inputs on-device;
 - **act autonomously** — every output is advisory and requires human judgment.
 
 This posture reflects real risk: the WHO has warned that authoritative-sounding health AI can create automation bias, and the FDA regulates clinical-decision-support software depending on its claims and users. Figment makes no clinical claims. A fuller `docs/safety_statement.md` will be published with the submission.
@@ -208,7 +202,7 @@ This posture reflects real risk: the WHO has warned that authoritative-sounding 
 | Synthetic dataset | CC-BY-4.0 |
 | Code | Apache-2.0 |
 
-Data handling: the app is local-only; patient inputs are never logged or transmitted; training data is synthetic with no real PHI.
+Data handling: local mode keeps runtime inputs on-device; hosted mode is for synthetic or de-identified demo inputs only; traces do not retain raw audio.
 
 ---
 
@@ -232,7 +226,7 @@ Badges targeted (none guaranteed): 🔌 Off the Grid · 🦙 Llama Champion · �
 
 ## Acknowledgements
 
-- **NVIDIA** — Nemotron 3 Nano model · **Modal** — fine-tune/eval compute · **Gradio** & **Hugging Face** — app framework and hosting · **llama.cpp** — local inference.
+- **NVIDIA** — Nemotron 3 Nano Omni model · **Modal** — fine-tune/eval compute · **Gradio** & **Hugging Face** — app framework and hosting · **llama.cpp** — local inference.
 
 ---
 
