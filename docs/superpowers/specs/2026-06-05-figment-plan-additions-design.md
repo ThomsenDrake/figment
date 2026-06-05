@@ -44,7 +44,7 @@ Each addition lists: **lens**, **placement** (host section + owner-day), **conte
 - **Lens:** Win the judging.
 - **Placement:** New subsection in **§14 (canonical demo cases)**, e.g. `## Demo video storyboard`; add a pointer task to **§10 June 14**.
 - **Content:** A timestamped beat sheet for the 2–3 min video: (0:00) cold open — clinic loses internet; (0:15) flip offline indicator, show Space link is live; (0:30) run Case 1 pediatric dehydration → red-flag fires, missing-info asked, SBAR generated; (1:30) open Trace tab to show the deterministic pipeline; (2:00) one line + table on base-vs-fine-tune; (2:30) close on the named real user / honest-fit statement. Note that the video must show the **hosted Space**, not only the local Mac.
-- **Acceptance criteria:** §14 contains an ordered, timestamped beat list totaling ≤3:00; it references Case 1 from §14 and the Trace tab from §3.5; it explicitly requires showing the hosted Space.
+- **Acceptance criteria:** §14 contains an ordered, timestamped beat list totaling ≤3:00; it references Case 1 from §14 and the Trace tab (§3, the 5th tab — `### 5. Trace`); it explicitly requires showing the hosted Space.
 
 ### D1 — Risk register & fallbacks
 - **Lens:** De-risk the sprint.
@@ -60,8 +60,8 @@ Each addition lists: **lens**, **placement** (host section + owner-day), **conte
 
 ### S1 — Safety statement contents
 - **Lens:** Safety & credibility.
-- **Placement:** New subsection in **§1 (final demo shape)** near §1.2 (clinical restraint), e.g. `## Safety statement (what safety_statement.md must contain)`; referenced by §10 June 5 (draft) and June 14 (final).
-- **Content:** The required elements of `safety_statement.md`: intended use; intended user (a trained responder — the named anchor); explicit "not a medical device, not diagnostic, not prescribing"; known limitations (synthetic data, prototype cards, model can err); escalation-not-replacement framing; and the WHO/FDA citations already in §1.2.
+- **Placement:** New subsection in **§1 (final demo shape)**, under the Clinical restraint subsection (`### 2. Clinical restraint`), e.g. `## Safety statement (what safety_statement.md must contain)`; referenced by §10 June 5 (draft) and June 14 (final).
+- **Content:** The required elements of `safety_statement.md`: intended use; intended user (a trained responder — the named anchor); explicit "not a medical device, not diagnostic, not prescribing"; known limitations (synthetic data, prototype cards, model can err); escalation-not-replacement framing; and the WHO/FDA citations already in the §1 Clinical restraint subsection.
 - **Acceptance criteria:** §1 lists ≥6 required elements for `safety_statement.md`; it reuses the existing WHO/FDA references; June 5 and June 14 tasks reference it.
 
 ### S2 — Licensing & data handling
