@@ -376,6 +376,22 @@ Train behavior:
 
 The protocol cards are the source of truth. The fine-tune is the behavior harness.
 
+## Licensing & data handling
+
+State these in `README.md`, `docs/model_card.md`, and `docs/dataset_card.md` — badges that publish artifacts need clear licenses:
+
+```text
+Model:   inherits the NVIDIA Nemotron model license (governs the published adapter)  [confirm exact terms]
+Dataset: open synthetic dataset — CC-BY-4.0   [confirm]
+Code:    Apache-2.0   [confirm]
+```
+
+Data handling:
+
+* The app is **local-only** — patient inputs are processed on-device.
+* Patient inputs are **never logged or transmitted** off-device.
+* Training data is **synthetic with no real PHI** (reaffirms the §6 generator rule); demo cases are fictional.
+
 ---
 
 # 6. Synthetic data pipeline
