@@ -210,6 +210,17 @@ Validation passed/failed
 
 This is the “show, don’t tell” engine.
 
+## Non-goals — what Figment will not do
+
+Deliberate scope boundaries, stated up front so judges and users know exactly what Figment is not:
+
+* It will **not diagnose** — it surfaces protocol cards and danger signs; it does not name a condition as fact.
+* It will **not prescribe or dose medication** — drug doses appear only if a cited protocol card contains them.
+* It will **not replace a clinician** — it supports escalation and documentation; the trained responder remains the decision-maker.
+* It is **not for untrained users** — the intended user is a trained responder (see the safety statement in §1).
+* It does **not store or transmit PHI** — patient inputs stay local and are never logged or sent off-device (see §5).
+* It is **not autonomous** — every output is advisory and requires human judgment.
+
 ---
 
 # 4. Repo structure
