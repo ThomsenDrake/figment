@@ -790,7 +790,7 @@ release/submission_social_post.txt
 
 * Run final eval table.
 * Export three canonical demo traces.
-* Record 2 to 3 minute demo.
+* Record 2 to 3 minute demo following the §14 storyboard (must show the hosted Space).
 * Push final Space (confirm it is still under the build-small-hackathon org, not a personal account).
 * Verify the Space boots cleanly from cold start.
 * Verify local Mac demo command works.
@@ -1255,6 +1255,21 @@ Purpose:
 * immediate escalation
 * minimal LLM freelancing
 * shows safety-first design
+
+## Demo video storyboard (2–3 min)
+
+A timestamped beat sheet for the submission video. It must show the **hosted Space** (not only the local Mac):
+
+```text
+0:00  Cold open — "What happens when the clinic loses internet?" Cut the network.
+0:15  Flip the offline indicator; show the live Space link still responding.
+0:30  Case 1 (pediatric dehydration): intake → red-flag fires → missing-info asked → SBAR generated.
+1:30  Open the Trace tab (§3, the 5th tab): show the deterministic pipeline end to end.
+2:00  One line + the before/after table (base vs Figment LoRA) from §8.
+2:30  Close on the named real user / honest-fit statement.
+```
+
+Keep it under 3:00. Record a rough cut before June 14 so a failed take never threatens submission.
 
 ---
 
