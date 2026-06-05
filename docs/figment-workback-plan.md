@@ -5,10 +5,12 @@ You have enough local hardware and Modal budget to make this genuinely good. The
 The product target:
 
 > **Figment is an offline protocol navigator for field clinics and disaster-response settings. Deterministic rules own danger-sign detection; the AI owns messy-note intake, protocol-pathway selection, missing-information planning, protocol-card synthesis, responder checklists, and referral handoffs — without diagnosing, prescribing, or overriding red flags.**
+>
+> **Omni audio assists intake only:** Figment uses NVIDIA Nemotron 3 Nano Omni's native audio input to transcribe responder dictation and draft editable field fills, but the medic must confirm or correct every audio-derived value before red-flag rules or the navigator run.
 
 The hackathon target:
 
-> Ship a polished Gradio Space by **June 15**, with a local Nemotron-powered app, a published fine-tune or adapter, an open synthetic dataset, demo traces, and a field-notes writeup.
+> Ship a polished Gradio Space by **June 15**, with a Nemotron Omni-powered app, a published fine-tune or adapter if feasible, an open synthetic dataset, demo traces, and a field-notes writeup.
 
 The Build Small Hackathon rules require models at or below **32B parameters**, a **Gradio app hosted as a Hugging Face Space**, plus a Space link, demo video, and social post for submission. The bonus badges you should target are **Off the Grid**, **Well-Tuned**, **Llama Champion**, **Sharing is Caring**, **Field Notes**, and, if time allows, **Off-Brand** custom UI. ([Hugging Face][1])
 
@@ -22,20 +24,21 @@ The Build Small Hackathon rules require models at or below **32B parameters**, a
 
 # 1. Final demo shape
 
-## The demo should show four things
+## The demo should show five things
 
 ### 1. Offline usefulness
 
 The local/offline mode works with:
 
 * no cloud APIs at runtime
-* local Nemotron model
+* local Nemotron Omni GGUF text navigator once verified
 * local protocol cards
 * local retrieval
 * deterministic red-flag rules
+* typed intake or canned transcript fallback if local raw-audio inference is not stable
 * local trace log
 
-The hosted Space should still be a true interactive demo, not only a canned trace viewer. In Space mode, Figment can call a Hugging Face-hosted Nemotron 3 Nano endpoint/model so judges can exercise the live navigator without your laptop. Label this honestly as hosted live mode; the offline claim belongs to local llama.cpp mode.
+The hosted Space should still be a true interactive demo, not only a canned trace viewer. In Space mode, Figment can call a hosted or self-hosted Nemotron Omni endpoint so judges can exercise live audio-assisted intake and protocol navigation without your laptop. Label this honestly as hosted live mode; the offline claim belongs to the local GGUF path. Do not claim local raw-audio support until the llama.cpp/Omni audio path is proven.
 
 ### 2. AI load-bearing protocol navigation
 
@@ -56,7 +59,27 @@ Figment should not diagnose, prescribe, or pretend to be a clinician. WHO has wa
 
 ### 4. Model constraint honesty
 
-Nemotron 3 Nano 30B-A3B is a perfect fit: it is a 30B-class model designed for reasoning and non-reasoning tasks, with configurable reasoning behavior and very long-context support. ([Hugging Face][4]) NVIDIA’s paper describes Nemotron 3 Nano as a MoE hybrid Mamba-Transformer model with 30B total parameters, roughly 3B active parameters per forward pass, and up to 1M context support. ([arXiv][5])
+Nemotron 3 Nano Omni 30B-A3B Reasoning is the frozen primary model for v1. NVIDIA's model card and technical report state **31B total parameters**, roughly **3B active parameters per token**, multimodal input (**video, audio, image, text**), text output, a Mamba2-Transformer Hybrid MoE architecture, an integrated speech encoder, and up to **256k context**. ([Hugging Face][4]) ([NVIDIA][5])
+
+The compliance claim should cite the NVIDIA model-card value: **31B <= 32B**. There is one caveat: the Hugging Face sidebar currently reports 33B params for the same repo, so treat this as an organizer-confirmation risk in the risk register rather than a fact to hand-wave away.
+
+### 5. Speech-assisted intake with human confirmation
+
+Audio should make the medic faster, not become a hidden authority. The v1 feature is:
+
+```text
+Record/upload responder dictation
+↓
+Nemotron Omni transcribes/extracts audio-derived intake
+↓
+Figment proposes editable field fills
+↓
+Medic accepts, edits, or rejects every suggestion
+↓
+Confirmed intake becomes the only input to rules/retrieval/navigation
+```
+
+Audio draft values are never final facts. They do not set `protocol_urgency`, clear red flags, override manual edits, diagnose, prescribe, or silently overwrite a typed field. If transcript text appears to mention a danger sign, the UI may show a "possible red flag from transcript - confirm intake" banner, but deterministic rules fire only on confirmed intake.
 
 ## Safety statement (what `safety_statement.md` must contain)
 
@@ -71,51 +94,45 @@ Draft on June 5, finalize June 14. Required elements:
 
 ---
 
-# 2. Local hardware plan
+# 2. Hardware and runtime plan
 
-Your **M4 Pro MacBook Pro with 48 GB RAM** is a strong dev and demo machine for quantized Nemotron.
+Omni is a cleaner model story but a harder runtime story. Treat this honestly.
 
-Use **Q4_K_M or Q5_K_M** locally.
-
-The Bartowski GGUF repo lists:
+Official Omni weight/runtime facts:
 
 ```text
-Q4_K_M: 24.66 GB
-Q5_K_M: 26.15 GB
-Q6_K:   33.43 GB
-Q8_0:   33.51 GB
-BF16:   63.18 GB
+BF16:   ~61.5-62 GB, minimum 1x H100 80GB
+FP8:    ~32.8-33 GB, minimum 1x L40S 48GB
+NVFP4:  ~20.9-21 GB, minimum RTX 5090 32GB-class / Blackwell-oriented path
+Context: up to 256k
+Inputs: video, audio, image, text
+Output: text
 ```
 
-(All five figures verified against the live Bartowski model card, June 2026. The Q6_K ≈ Q8_0 near-tie looks like a typo but is genuine — a quantization artifact of this MoE/hybrid model, where the repo also lists `Q6_K_L` at the same 33.43 GB. Do not "correct" it.)
+NVIDIA's model card lists vLLM, TensorRT-LLM, TensorRT Edge-LLM, llama.cpp, Ollama, and SGLang as inference runtimes, but the practical path differs by precision and hardware. BF16 is not a MacBook or cheap Space path. ([Hugging Face][4])
 
-So the memory math is:
+Your **M4 Pro MacBook Pro with 48 GB RAM** is still useful for the local/off-grid proof, but not for full BF16 Omni. Use a verified Omni GGUF for local text protocol navigation and keep local audio marked experimental until proven.
 
-```text
-48.00 GB unified memory
-- 24.66 GB Q4_K_M weights
-= 23.34 GB remaining
-```
-
-That leaves enough room for llama.cpp runtime, a moderate KV cache, Gradio, SQLite retrieval, and the OS. Q5_K_M should also be viable. Q6/Q8 may run, but they will leave less headroom and may be less pleasant under demo pressure. Full BF16 is too large for local MacBook inference. ([Hugging Face][6])
+The ggml-org Omni GGUF repo exposes a local path; subagent research found Q4_K_M around **24.5 GB**, Q8_0 around **33.6 GB**, plus a roughly **1.59 GB** multimodal projection file. That makes local Q4 text navigation plausible on the Mac, but much tighter than the old text-only plan once KV cache, Gradio, OS, and any audio plumbing are included. ([Hugging Face][6]) Unsloth also publishes an Omni GGUF candidate path, but verify it locally before claiming Llama Champion. ([Hugging Face][9])
 
 ## Local inference target
 
 Use:
 
-* **Nemotron Q4_K_M** for primary local demo
+* **Omni Q4_K_M GGUF** for primary local text-navigation proof after verification
 * **16k context** for normal usage
 * **8k context** fallback if latency or memory gets weird
-* **thinking disabled** in user-facing mode
+* **thinking disabled / hidden** in user-facing mode
+* typed intake or canned transcript fallback if local raw-audio inference is not stable
 * trace panel showing fired deterministic rules, retrieved cards, selected pathway IDs, missing-observation plan, uncertainty/conflict notes, checklist items, and handoff evidence; no raw chain-of-thought
 
-Example local server command:
+Candidate local server command to verify, not a guaranteed final script:
 
 ```bash
 brew install llama.cpp
 
 llama-server \
-  -hf bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_M \
+  -hf ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M \
   --ctx-size 16384 \
   --port 8001 \
   --host 127.0.0.1 \
@@ -125,29 +142,41 @@ llama-server \
 
 ## Canonical model identifiers
 
-Pin these once in `config.py` and the model card; every other reference is a derivative of the same 30B base, so naming must not drift across the doc:
+Pin these once in `config.py` and the model card; every other reference is a derivative of the same Omni base, so naming must not drift across the doc:
 
 ```text
-Base (training):    nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-Local serving:      bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF (Q4_K_M / Q5_K_M)
-Published adapter:  nemotron-3-nano-30b-a3b-figment-lora-v1
+Base / hosted:      nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16
+Hosted fallback:    nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8
+Hosted fallback:    nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4
+Local serving:      ggml-org/NVIDIA-Nemotron-3-Nano-Omni (Q4_K_M after local proof)
+Alt local serving:  unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF
+Published adapter:  nemotron-3-nano-omni-30b-a3b-reasoning-figment-lora-v1
+Audio intake:       native Omni audio input, not a separate audio model
 ```
 
-Compliance check: total parameters = **30B ≤ 32B** (≈2B headroom). The ~3B active-per-forward-pass figure is **not** the compliance number — the org card's limit is on *total* parameters. A LoRA adapter adds far less than 1B trainable params, so base+adapter (or merged) stays ≤32B.
+Compliance check: NVIDIA's model card says total parameters = **31B <= 32B** (about 1B headroom). The ~3B active-per-token figure is **not** the compliance number - the org card's limit is on *total* parameters.
+
+Parameter-count caveat: the same Hugging Face model page sidebar currently reports **33B params** while the model-card body says **31B**. Ask/verify with organizers if this becomes a submission risk. If organizers require the sidebar count, fall back to the old 30B text-only Nemotron plan.
+
+Adapter ledger: keep the LoRA rank small and record the exact adapter parameter count before publication. If organizers count adapters additively and the count threatens the 32B cap, publish the base model demo and drop the Well-Tuned badge rather than risking eligibility.
+
+Omni audio specifics: the model card supports wav/mp3 audio input up to 1 hour with 8 kHz+ sampling and word-level timestamps. For transcription-style use, use non-thinking mode and constrained JSON output for the draft-intake pass. ([Hugging Face][4])
 
 ## Performance budget
 
 Set a target and a degradation ladder so the live demo never stalls. Measure on the M4 Pro on June 11 and fill in the numbers:
 
 ```text
-Target (30B-Q4_K_M, 16k ctx):
+Target (Omni Q4_K_M GGUF, 16k ctx, text navigation):
   first-token latency:  ____ s      (aim ≤ ~3 s)
   throughput:           ____ tok/s  (aim ≥ ~10 tok/s)
+  local audio draft:    verified yes/no
 
 Degradation ladder (apply in order if below target under demo load):
   1. 16k → 8k context
-  2. Q4_K_M → smaller quant (or shorter max output)
-  3. canned-response mode (pre-baked demo traces) for the live demo
+  2. local audio → canned transcript / typed intake
+  3. Q4_K_M → smaller quant or shorter max output if available
+  4. canned-response mode (pre-baked demo traces) for the live demo
 ```
 
 ---
@@ -173,9 +202,23 @@ Structured inputs:
 * available supplies
 * free-text responder note
 
+Optional Omni audio-assisted intake:
+
+* "Dictate intake" audio recorder/upload in the Field Intake tab
+* Omni transcript displayed as editable text
+* field-fill suggestions labeled `Audio draft`
+* source snippet shown for each proposed value when possible
+* source timecode shown when available
+* accept/edit/reject/clear controls for suggestions
+* `Confirm intake` gate before deterministic rules, retrieval, or navigator output can run
+
+Audio intake is a convenience layer over the intake form, not a sixth tab and not a safety-bearing authority. Typed intake must remain fully functional when `ENABLE_AUDIO_INTAKE=false`.
+
 ### 2. Risk Check
 
 Deterministic red-flag rules fire before the LLM and set the escalation floor. The AI receives those results as locked context; it may explain them, but may not downgrade, suppress, or reinterpret them.
+
+Rules must run on confirmed intake only. Audio transcript text can create provisional "possible red flag mentioned" prompts for the medic to review, but cannot itself trigger final red flags or `protocol_urgency`.
 
 Examples:
 
@@ -234,7 +277,7 @@ Deliberate scope boundaries, stated up front so judges and users know exactly wh
 * It will **not prescribe or dose medication** — drug doses appear only if a cited protocol card contains them.
 * It will **not replace a clinician** — it supports escalation and documentation; the trained responder remains the decision-maker.
 * It is **not for untrained users** — the intended user is a trained responder (see the safety statement in §1).
-* It does **not store or transmit PHI** — patient inputs stay local and are never logged or sent off-device (see §5).
+* It does **not store PHI** — local/offline mode keeps patient inputs on-device, hosted demo mode uses synthetic/de-identified inputs only, and published traces never include raw audio (see §5).
 * It is **not autonomous** — every output is advisory and requires human judgment.
 * It will **not override deterministic danger signs** — red-flag rules set the minimum urgency floor.
 * It will **not invent protocol pathways, treatments, or referral criteria** beyond cited cards.
@@ -259,6 +302,7 @@ figment/
     __init__.py
     config.py
     schemas.py
+    audio_intake.py
     rules.py
     retrieval.py
     model_client.py
@@ -294,6 +338,9 @@ figment/
       eval_results_pilot.json
       eval_results_finetune.json
       eval_results_final_candidate.json
+
+    demo_audio/
+      case_1_dictated_intake.wav
 
   scripts/
     build_fts.py
@@ -396,6 +443,32 @@ Every training output should look like this:
 }
 ```
 
+Audio field-fill suggestions are a separate pre-navigation object and do **not** change the canonical navigator schema:
+
+```json
+{
+  "task": "audio_intake_draft",
+  "audio_model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
+  "transcript": "",
+  "unclear_spans": [],
+  "suggested_fields": [
+    {
+      "field": "chief_concern",
+      "draft_value": "",
+      "source_snippet": "",
+      "source_timecode": "",
+      "status": "audio_draft | accepted | edited | rejected",
+      "needs_confirmation": true
+    }
+  ],
+  "missing_or_unclear_fields": [],
+  "provisional_red_flag_mentions": [],
+  "confirmed_intake_required": true
+}
+```
+
+After medic confirmation, accepted or edited suggestions become ordinary structured intake and responder-note values. The final navigator output should still use `structured_field`, `responder_note`, or `protocol_card` as fact sources; audio provenance belongs in the trace.
+
 ## Critical rule
 
 Do **not** train medical facts into the model.
@@ -431,9 +504,11 @@ Code:            Apache-2.0
 
 Data handling:
 
-* The app is **local-only** — patient inputs are processed on-device.
-* Patient inputs are **never logged or transmitted** off-device.
+* Local/offline mode processes patient inputs on-device.
+* Hosted Space mode may transmit text/audio inputs to the hosted Omni endpoint; use synthetic or de-identified demo inputs only in hosted mode.
 * Training data is **synthetic with no real PHI** (reaffirms the §6 generator rule); demo cases are fictional.
+* Audio demo clips are synthetic responder dictation only; do not use real patient audio.
+* Published traces may include transcript text and accepted/edited/rejected field suggestions, but must not include raw audio bytes or files.
 
 ---
 
@@ -549,6 +624,9 @@ Code should enforce:
 * candidate protocol pathways cite existing cards
 * `protocol_urgency` never falls below the deterministic red-flag floor
 * checklist and handoff items are grounded in the intake and cited cards
+* audio suggestions are marked provisional until accepted or edited
+* manual intake values are never overwritten by audio drafts
+* deterministic rules cannot run until intake is confirmed
 
 The pipeline should be:
 
@@ -560,7 +638,7 @@ generate → critique → revise → deterministic validate → dedupe → split
 
 # 7. Fine-tuning plan
 
-Modal gives you enough budget for a real 30B LoRA run. Modal lists A100 80GB at **$0.000694/sec**, H100 at **$0.001097/sec**, L40S at **$0.000542/sec**, and L4 at **$0.000222/sec**. ([Modal][7])
+Modal gives you enough budget to attempt a real Omni LoRA run if tooling support is proven. Modal lists A100 80GB at **$0.000694/sec**, H100 at **$0.001097/sec**, L40S at **$0.000542/sec**, and L4 at **$0.000222/sec**. ([Modal][7])
 
 Arithmetic:
 
@@ -584,7 +662,7 @@ Modal’s docs also confirm A100 40GB and A100 80GB variants are available. ([Mo
 
 ### Run 0: no training baseline
 
-Evaluate the canonical base model (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`, served locally via its GGUF quant `bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF`) against your gold set.
+Evaluate the canonical base model (`nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, served through the hosted Omni path and, after local proof, `ggml-org/NVIDIA-Nemotron-3-Nano-Omni` GGUF for local text navigation) against your gold set.
 
 Deliverable:
 
@@ -615,14 +693,14 @@ Goal:
 * prove eval harness works
 * avoid wasting A100 hours
 
-### Run 3: 30B behavior LoRA
+### Run 3: Omni behavior LoRA
 
 Use A100-80GB or H100.
 
 Starting config:
 
 ```yaml
-model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+model: nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16
 method: LoRA
 max_seq_length: 4096
 lora_rank: 8
@@ -637,7 +715,7 @@ eval_every: 50
 save_strategy: frequent
 ```
 
-Unsloth’s Nemotron guide says the 30B model does not fit on free Colab and that 16-bit LoRA fine-tuning uses around 60GB VRAM, so use A100-80GB/H100 for the serious run. ([Unsloth - Train and Run Models Locally][9])
+Before launching the serious run, prove the training stack supports the Omni custom-code model, multimodal config, and chat template. If it does not, ship the base Omni app and no Well-Tuned badge rather than spending the final days on framework surgery.
 
 ### Run 4: repair run
 
@@ -659,7 +737,7 @@ Then run one more short LoRA.
 
 # 8. Evaluation plan
 
-Build the eval before the 30B training job.
+Build the eval before the Omni training job.
 
 ## Gold eval targets
 
@@ -677,6 +755,8 @@ Build the eval before the 30B training job.
 | Unsupported medication/dose rate    |                  0% |
 | SBAR factuality                     |               ≥ 95% |
 | Prompt-injection compliance failure | 0 critical failures |
+| Audio draft confirmation integrity  |              100% |
+| Manual correction persistence       |              100% |
 
 ## Gold cases
 
@@ -688,6 +768,9 @@ Create 50 to 100 manually reviewed cases:
 * 10 routine/monitor cases
 * 10 adversarial/prompt-injection cases
 * 5 “no relevant protocol card” cases
+* 3 synthetic dictated-intake clips for audio workflow checks
+
+Audio workflow checks are pass/fail, not clinical-quality transcription benchmarks. They verify that a synthetic audio clip can produce a transcript, draft at least chief concern, symptoms, vitals/free-text note, and one missing/unclear field, preserve a medic correction, block navigator execution until confirmation, and write audio provenance into the trace.
 
 ## Before/after table for demo
 
@@ -736,6 +819,12 @@ Each §8 target is computed one of two ways. Deterministic metrics run in `scrip
 ```text
 Gradio Blocks UI
   ↓
+Optional audio intake
+  ↓
+audio_intake.py Omni audio transcription + editable field-fill drafts
+  ↓
+Medic confirms intake
+  ↓
 Structured intake schema
   ↓
 rules.py deterministic red-flag engine
@@ -746,9 +835,9 @@ prompt_builder.py constrained protocol-navigator prompt
   ↓
 navigator.py AI protocol navigator
   ↓
-llama.cpp local server
+model_client.py hosted Omni / local GGUF adapter
   ↓
-Nemotron 3 Nano 30B-A3B
+Nemotron 3 Nano Omni 31B-A3B
   ↓
 validators.py output validator
   ↓
@@ -756,6 +845,15 @@ sbar.py referral note renderer
   ↓
 trace.py trace export
 ```
+
+Audio intake implementation contract:
+
+* `audio_intake.py` accepts mic/uploaded audio and prepares it for Omni-compatible audio input.
+* `audio_intake.py` pins the same Omni model ID as `model_client.py` and exposes transcript + draft field suggestions, not final intake.
+* `ENABLE_AUDIO_INTAKE=false` must let the Space cold-boot and run typed/demo-case intake with no audio path loaded.
+* Manual edits always win over audio drafts.
+* No navigator run is allowed while intake is unconfirmed.
+* Trace shows audio provenance and correction status, but not raw audio.
 
 ## Constrained prompt skeleton
 
@@ -774,6 +872,7 @@ CONTEXT (injected):
 
 RULES:
 - Extract relevant facts from messy notes and mark them as reported, missing, unclear, or conflicting.
+- Treat audio draft text only as confirmed intake if the medic accepted or edited it; never treat unconfirmed audio drafts as facts.
 - Select candidate protocol pathways only from retrieved cards; explain the fit briefly.
 - Stay inside the retrieved cards; cite every card you rely on in source_cards.
 - Do not give a drug dose unless a cited card explicitly contains it.
@@ -795,11 +894,14 @@ Runs full Figment locally:
 
 ```text
 Gradio app
+Typed intake / canned transcript audio draft fallback
 SQLite retrieval
 Rules engine
-llama.cpp server
-Nemotron Q4/Q5 GGUF
+llama.cpp server after Omni GGUF verification
+Nemotron Omni Q4 GGUF text navigator
 ```
+
+Local raw-audio Omni is a stretch goal, not a guaranteed off-grid claim. The local/off-grid proof may use typed intake or a canned transcript if audio support is not stable.
 
 ### Hugging Face Space mode
 
@@ -807,17 +909,20 @@ Primary hosted path:
 
 | Mode | Purpose |
 | ---- | ------- |
-| **HF-hosted Nemotron 3 Nano live mode** | Primary hosted Space demo; calls a Hugging Face-hosted Nemotron 3 Nano model/endpoint so judges can run real navigator outputs without your laptop |
+| **Hosted Nemotron Omni live mode** | Primary hosted Space demo; calls a hosted/self-hosted Omni endpoint for live audio-assisted intake and protocol navigation |
+| **Canned transcript + live text navigator** | Reliability path if hosted audio fails but hosted text navigation still works |
 | **Canned trace fallback** | Emergency reliability path if the hosted model endpoint, quota, or cold start fails |
-| **L4 upgraded Space** | Optional stronger self-hosted model path if available and reliable |
+| **L40S/A100 upgraded Space** | Optional stronger self-hosted Omni path if available and reliable |
 
 Implementation notes:
 
-* Put `HF_MODEL_ID` and any required HF inference token/endpoint secret in the Space environment.
+* Put `HF_MODEL_ID`, `OMNI_ENDPOINT_URL`, and any required inference token/endpoint secret in the Space environment.
+* Put `ENABLE_AUDIO_INTAKE=false` by default for the first deploy; turn it on only after the hosted Omni audio path cold-boots reliably.
+* Because the Omni HF page is not deployed by an HF Inference Provider, hosted Omni requires a self-hosted endpoint, NVIDIA endpoint/NIM-style provider path, paid Space GPU, or a clearly labeled fallback. ([NVIDIA][11])
 * Keep rules, retrieval, validation, trace export, and safety banners identical between local and hosted modes.
-* Do not describe hosted mode as off-grid; use it for the true public demo. Use local llama.cpp mode as the offline/off-grid proof.
+* Do not describe hosted mode as off-grid; use it for the true public demo. Use local GGUF mode as the offline/off-grid proof.
 
-Hugging Face pricing lists CPU Basic as 2 vCPU/16 GB RAM free, CPU Upgrade as 8 vCPU/32 GB RAM, and 1x L4 as 8 vCPU/30 GB RAM with 24 GB VRAM. ([Hugging Face][10]) Since Nemotron Q4_K_M is 24.66 GB before overhead, the L4 Space is tight for full GPU residency. A Hugging Face-hosted Nemotron endpoint/model is the better Space path for a true hosted demo; your Mac remains the reliable offline hero path.
+Hugging Face pricing lists CPU Basic as 2 vCPU/16 GB RAM free, CPU Upgrade as 8 vCPU/32 GB RAM, and 1x L4 as 8 vCPU/30 GB RAM with 24 GB VRAM. ([Hugging Face][10]) Since Omni FP8 wants L40S-class 48 GB VRAM and BF16 wants H100/A100-80GB-class hardware, CPU Basic/Upgrade and L4 are poor fits for self-hosting the full model. A hosted Omni endpoint/model is the better Space path for a true hosted demo; your Mac remains the offline proof for local text navigation after GGUF verification.
 
 ---
 
@@ -869,7 +974,8 @@ release/submission_social_post.txt
 * Export three canonical demo traces.
 * Record 2 to 3 minute demo following the §14 storyboard (must show the hosted Space).
 * Push final Space (confirm it is still under the build-small-hackathon org, not a personal account).
-* Verify hosted Space live mode calls HF-hosted Nemotron 3 Nano and returns a validated navigator output.
+* Verify hosted Space live mode calls hosted/self-hosted Nemotron Omni and returns a validated navigator output.
+* Verify hosted audio intake is either working reliably or explicitly disabled with the canned transcript fallback visible.
 * Verify the Space boots cleanly from cold start.
 * Verify local Mac demo command works.
 * Prepare social post.
@@ -928,19 +1034,22 @@ Make Figment look polished.
   * Protocol Guidance
   * Navigator Output + Handoff
   * Trace
+* Add optional audio controls inside Intake: record/upload audio, transcribe, editable transcript, audio draft field suggestions, accept/edit/reject controls, and `Confirm intake`.
 * Add three demo case buttons.
+* Add one synthetic dictated-intake audio demo clip for Case 1, with one intentional correction moment in the storyboard.
 * Add JSON trace download.
 * Add local/offline status chip.
-* Add hosted-live status chip for HF-hosted Nemotron mode.
+* Add hosted-live status chip for hosted Omni mode.
 * Add protocol evidence cards.
 * Show pathway rationale, uncertainty/conflict notes, missing observations, and responder checklist as first-class UI panels.
-* Wire Space mode to HF-hosted Nemotron 3 Nano for a true live demo; keep canned traces as explicit fallback only.
+* Wire Space mode to hosted/self-hosted Nemotron Omni for a true live demo; keep canned transcript and canned traces as explicit fallbacks only.
+* Keep audio intake disabled in the hosted Space unless the Omni audio endpoint cold-boots reliably; typed intake and canned transcript demo must still work.
 
 ### Deliverables
 
 ```text
 app.py polished
-Space deployed with HF-hosted Nemotron live mode
+Space deployed with hosted Omni live mode
 3 demo cases working
 ```
 
@@ -948,20 +1057,23 @@ This is the day to chase the **Off-Brand** badge if it does not jeopardize the c
 
 ---
 
-## June 11: llama.cpp integration day
+## June 11: Omni runtime integration day
 
 ### Goals
 
-Run Nemotron locally through llama.cpp and connect the app.
+Run hosted Omni through `model_client.py`, verify local Omni GGUF through llama.cpp if possible, and connect the app.
 
 ### Tasks
 
-* Download GGUF quant.
-* Start `llama-server`.
-* Implement local OpenAI-compatible client.
+* Download/verify Omni GGUF quant and multimodal projection files.
+* Start `llama-server` for local text-navigation proof if the GGUF path boots.
+* Implement hosted Omni client and local OpenAI-compatible client behind `model_client.py`.
+* Implement `audio_intake.py` with a disabled-by-default Omni audio path and a canned transcript fallback for demo audio.
+* Prepare audio input for the hosted Omni endpoint.
+* Add audio trace fields for transcript, suggestions, accepted/edited/rejected fields, and confirmation status; do not store raw audio.
 * Add timeout handling.
 * Add fallback canned-response mode for Space failures.
-* Keep local llama.cpp and HF-hosted Space clients behind the same `model_client.py` interface.
+* Keep local llama.cpp and hosted Omni Space clients behind the same `model_client.py` interface.
 * Validate outputs with `validators.py`.
 * Measure first-token latency + tok/s on the Mac; record them in the §2 performance budget.
 * Export traces.
@@ -970,6 +1082,7 @@ Run Nemotron locally through llama.cpp and connect the app.
 
 ```text
 model_client.py
+audio_intake.py
 scripts/export_traces.py
 local llama.cpp run script
 working end-to-end local demo
@@ -982,7 +1095,7 @@ working end-to-end local demo
 set -euo pipefail
 
 llama-server \
-  -hf bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_M \
+  -hf ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M \
   --ctx-size 16384 \
   --port 8001 \
   --host 127.0.0.1 \
@@ -992,7 +1105,7 @@ llama-server \
 
 ---
 
-## June 10: 30B fine-tune day
+## June 10: Omni fine-tune day
 
 ### Goals
 
@@ -1000,7 +1113,7 @@ Run the real LoRA job.
 
 ### Tasks
 
-* Launch 30B LoRA on Modal A100-80GB/H100.
+* Launch Omni LoRA on Modal A100-80GB/H100 only if the June 9 tooling proof passes.
 * Save frequent checkpoints.
 * Evaluate checkpoints.
 * Pick best checkpoint by eval, not training loss.
@@ -1034,7 +1147,7 @@ A boring safe model beats a dramatic unsafe one. This is medicine-adjacent, not 
 
 ### Goals
 
-Prove the data and training stack before the real 30B run.
+Prove the data and training stack before the real Omni run.
 
 ### Tasks
 
@@ -1139,6 +1252,7 @@ Make the app real immediately.
 * Add `requirements.txt`, `Dockerfile`, `Makefile`, `.env.example` now so the Space can cold-boot from day one (don't discover these are missing on deploy day).
 * Build Gradio Blocks skeleton.
 * Add intake form.
+* Add audio intake-assist placeholder: audio input, editable transcript box, draft field-fill panel, and `Confirm intake` gate.
 * Add mock navigator response with protocol pathways, missing observations, checklist, and SBAR.
 * Add trace object.
 * Add SBAR renderer.
@@ -1151,6 +1265,7 @@ Make the app real immediately.
 figment/__init__.py
 app.py
 schemas.py
+audio_intake.py
 trace.py
 sbar.py
 navigator.py
@@ -1201,6 +1316,7 @@ Tabs:
 Output schema:
   Canonical schema is the §5 protocol-navigator schema.
   Use protocol_urgency, not risk_level.
+  Audio field-fill suggestions are pre-navigation drafts and do not alter the navigator output schema.
 
 Protocol cards:
   dehydration_pediatric_v1.json          -> PED-DEHYD-RED-FLAGS-v1
@@ -1215,14 +1331,21 @@ Protocol cards:
   safety_boundaries_v1.json              -> SAFETY-BOUNDARIES-v1
 
 Runtime modes:
-  Hosted live demo: HF-hosted Nemotron 3 Nano through the Space.
-  Local/offline proof: llama.cpp GGUF on the Mac.
+  Hosted live demo: hosted/self-hosted Nemotron Omni through the Space.
+  Local/offline proof: Omni GGUF text-navigation path through llama.cpp on the Mac after verification.
   Fallback only: canned traces if hosted model/Space reliability fails.
+  Audio intake: native Omni audio input, optional and disabled-by-default in hosted mode until cold-boot is reliable.
+
+Audio confirmation contract:
+  Audio creates editable transcript + audio draft field suggestions only.
+  Manual entries and edits always win.
+  Deterministic red-flag rules and navigator output run only after confirmed intake.
+  Published traces do not include raw audio.
 
 Licenses:
   Code: Apache-2.0
   Dataset: CC-BY-4.0
-  Model/adapter: inherits NVIDIA Nemotron terms; cite upstream terms in model card.
+  Model/adapter: NVIDIA Open Model Agreement for Nemotron Omni; retain notices and cite upstream terms in the model card.
 
 User test safety:
   Use de-identified fictionalized workflow scenarios or synthetic cases judged realistic.
@@ -1243,9 +1366,9 @@ docs/safety_statement.md draft
 
 | Badge                 | Plan                                                                 | Risk   |
 | --------------------- | -------------------------------------------------------------------- | ------ |
-| **Off the Grid**      | Local mode has no runtime cloud APIs: local Nemotron, local retrieval, local rules. Hosted Space live mode uses HF-hosted Nemotron and must be labeled separately. | Medium |
-| **Well-Tuned**        | Publish Figment LoRA/adapter **and demo the app running it** (a base-only demo forfeits this badge). | Medium |
-| **Llama Champion**    | Run Nemotron through llama.cpp.                                      | Low    |
+| **Off the Grid**      | Local mode has no runtime cloud APIs: local Omni GGUF text navigator, local retrieval, local rules. Hosted Omni audio/text mode must be labeled separately and does not count toward this badge. | Medium |
+| **Well-Tuned**        | Publish Figment LoRA/adapter targeting Omni **and demo the app running it** (a base-only demo forfeits this badge). Drop this badge if adapter count/tooling threatens eligibility. | High |
+| **Llama Champion**    | Run Omni GGUF through llama.cpp after local verification.             | Medium |
 | **Sharing is Caring** | Publish trace JSONs on Hub.                                          | Low    |
 | **Field Notes**       | Write build report with eval table. Org card marks this **_(Tentative)_** — may not be awarded; pursue for the writeup's own value, don't bank the points. | Low    |
 | **Off-Brand**         | Custom Gradio Blocks CSS.                                            | Medium |
@@ -1274,6 +1397,12 @@ Open app
 ↓
 Click "Disaster clinic: pediatric dehydration"
 ↓
+Optionally dictate/upload synthetic intake audio
+↓
+Review Omni audio transcript and draft field fills
+↓
+Correct one audio-draft mistake and confirm intake
+↓
 Structured intake loads
 ↓
 Risk rules flag urgent danger signs
@@ -1290,24 +1419,25 @@ SBAR note appears
 ↓
 Trace export downloads
 ↓
-Hosted Space returns live HF-hosted Nemotron output
+Hosted Space returns live Omni output
 ↓
-Local llama.cpp mode runs the same case without internet
+Local GGUF mode runs the same case without internet, using typed intake or canned transcript if local raw audio is not verified
 ```
 
 ## Minimum acceptable submission
 
 Three artifacts are **non-negotiable in every tier** — a submission missing any one is invalid per the org rules:
 
-* a **Hugging Face Space hosted under the build-small-hackathon org** that runs without your laptop, preferably powered by HF-hosted Nemotron 3 Nano live mode (canned traces are fallback only)
+* a **Hugging Face Space hosted under the build-small-hackathon org** that runs without your laptop, preferably powered by hosted/self-hosted Nemotron Omni live mode (canned transcript/trace fallbacks are fallback only)
 * a **demo video**
 * a **social post**
 
 On top of that mandatory floor, if everything else goes sideways, ship:
 
-* base Nemotron GGUF
+* base Omni GGUF
 * local llama.cpp
-* HF-hosted Nemotron Space mode
+* hosted Omni Space mode
+* typed intake, with audio intake disabled if it jeopardizes Space reliability
 * rules engine
 * protocol retrieval and AI protocol navigator
 * card-grounded SBAR handoff renderer
@@ -1319,7 +1449,8 @@ On top of that mandatory floor, if everything else goes sideways, ship:
 
 * all minimum features
 * the anchored real user actually used it (Backyard AI's core "the person used it" criterion)
-* 30B LoRA published
+* audio-assisted intake works on at least one synthetic dictated demo clip and preserves medic corrections
+* Omni LoRA published, if eligible and supported
 * before/after eval table
 * dataset published
 * custom UI
@@ -1346,6 +1477,9 @@ Can the app boot?
 Can the local model respond?
 Can the hosted Space model respond?
 Can the three demo cases run?
+Can typed intake still run when audio intake is disabled?
+Can the synthetic dictated-intake clip produce editable draft fields?
+Did manual corrections persist after audio suggestions?
 Can traces export?
 Can eval run?
 Do unit tests pass?
@@ -1363,8 +1497,8 @@ June 6: app skeleton
 June 7: protocol/rules
 June 8: dataset
 June 9: pilot eval
-June 10: 30B adapter
-June 11: llama.cpp local integration
+June 10: Omni adapter
+June 11: Omni runtime integration
 June 12: Space/UI
 June 13: user test
 June 14: final assets
@@ -1380,6 +1514,7 @@ June 15: submit
 Purpose:
 
 * missing vitals
+* audio-assisted dictated intake with one visible medic correction
 * urgent red flags
 * asks next questions
 * shows card-cited navigator output plus SBAR handoff
@@ -1408,8 +1543,9 @@ A timestamped beat sheet for the submission video. It must show the **hosted Spa
 
 ```text
 0:00  Cold open — "What happens when the clinic loses internet?" Cut the network.
-0:15  Show the live Space link running HF-hosted Nemotron mode; then show local/offline mode as the off-grid proof.
-0:30  Case 1 (pediatric dehydration): messy note → protocol pathway → red-flag fires → missing observations + checklist → SBAR.
+0:15  Show the live Space link running hosted Omni mode; then show local/offline mode as the off-grid proof.
+0:30  Case 1 (pediatric dehydration): dictate synthetic intake → Omni drafts fields → medic corrects one field → confirm intake.
+0:55  Same case: protocol pathway → red-flag fires → missing observations + checklist → SBAR.
 1:30  Open the Trace tab (§3, the 5th tab): show deterministic rules plus AI protocol navigation end to end.
 2:00  One line + the before/after table (base vs Figment LoRA) from §8.
 2:30  Close on the real-user anchor: disaster-response volunteer trained in disaster-response first aid and local protocol use, name withheld for privacy.
@@ -1426,7 +1562,7 @@ Use this as the README opener:
 ```text
 Figment is offline protocol support for field clinics and disaster response.
 
-It runs a local ≤32B model as an AI protocol navigator: deterministic rules flag danger signs, while the AI turns messy field notes into structured facts, candidate protocol pathways, missing-information plans, uncertainty notes, card-cited responder checklists, and SBAR referral handoffs. It was built for and tested with a real disaster-response volunteer trained in disaster-response first aid and local protocol use; their name is withheld for privacy.
+It runs NVIDIA Nemotron 3 Nano Omni as a <=32B multimodal protocol navigator: deterministic rules flag danger signs, while the AI turns dictated or typed field notes into confirmed structured facts, candidate protocol pathways, missing-information plans, uncertainty notes, card-cited responder checklists, and SBAR referral handoffs. It was built for and tested with a real disaster-response volunteer trained in disaster-response first aid and local protocol use; their name is withheld for privacy.
 
 Figment is not intended for diagnosis, treatment, prescribing, patient triage, or autonomous clinical decision support. It is a prototype for protocol navigation, protocol-defined escalation cues, and documentation in low-connectivity environments.
 ```
@@ -1438,7 +1574,7 @@ What happens when the clinic loses internet?
 
 Figment keeps working.
 
-Built for the Build Small Hackathon, Figment runs NVIDIA Nemotron 3 Nano 30B-A3B locally through llama.cpp and as a Hugging Face-hosted live Space demo. Deterministic rules flag danger signs; the AI navigates protocol cards, marks uncertainty, asks for missing observations, builds card-cited responder checklists, and drafts SBAR handoffs for field clinics and disaster response.
+Built for the Build Small Hackathon, Figment runs NVIDIA Nemotron 3 Nano Omni as a single <=32B multimodal model for audio-assisted intake and protocol navigation. Deterministic rules flag danger signs; the AI drafts intake fields for medic confirmation, navigates protocol cards, marks uncertainty, asks for missing observations, builds card-cited responder checklists, and drafts SBAR handoffs for field clinics and disaster response.
 ```
 
 The winning move is to make Figment feel humble, specific, and useful. Not “AI doctor.” More like: **a field protocol binder that can read messy notes, cite itself, ask the right next questions, and stop at protocol boundaries.**
@@ -1451,11 +1587,15 @@ The winning move is to make Figment feel humble, specific, and useful. Not “AI
 
 | Risk | Trigger (how you know) | Fallback | Owner-day |
 | ---- | ---------------------- | -------- | --------- |
-| Modal 30B LoRA job fails or OOMs | Job errors, or needs > 80 GB VRAM | Ship the pilot/4B adapter or base GGUF (minimum tier, §12); reallocate the day to hardening | June 10 |
-| Model too slow for a live demo | First-token or tok/s below the §2 performance budget | Step down the §2 degradation ladder: 16k→8k ctx → smaller quant → canned-response mode | June 11 |
+| Omni parameter-count ambiguity | NVIDIA model-card body says 31B, but HF sidebar reports 33B | Ask organizers; cite NVIDIA model-card value; if rejected, fall back to the prior 30B text-only Nemotron plan | June 5 / 12 |
+| Modal Omni LoRA job fails or OOMs | Job errors, unsupported custom-code model, or needs > 80 GB VRAM | Ship base Omni or prior pilot adapter; drop Well-Tuned if needed | June 10 |
+| Model too slow for a live demo | First-token, audio draft latency, or tok/s below the §2 performance budget | Step down the §2 degradation ladder: 16k→8k ctx → typed/canned transcript → smaller quant → canned-response mode | June 11 |
 | Synthetic critique keep-rate too low | < ~40% kept after critique + validate | Lower the target to 2,000 examples; invest more in cards/rules; accept a smaller train set | June 8 |
-| HF-hosted Nemotron endpoint/model fails | Endpoint errors, quota/auth failure, or unacceptable latency | Fall back to canned traces or smaller hosted model; keep local llama.cpp demo as proof of full path | June 12 |
+| Hosted Omni endpoint/model fails | Endpoint errors, no provider, quota/auth failure, or unacceptable latency | Self-host FP8/NVFP4 on paid GPU if available; otherwise canned transcript/traces; keep local GGUF demo as proof of full path | June 12 |
 | HF Space won't cold-boot | Space build/log errors on a clean start | Ship the canned-response Space (still a valid mandatory artifact); fix requirements/Dockerfile | June 12 |
+| Local Omni/llama.cpp path fails | GGUF will not boot, audio unsupported, or latency unusable | Use typed intake + hosted/canned text navigator; do not claim local raw-audio support | June 11 |
+| Hosted audio privacy risk | Space sends audio/media to hosted endpoint | Disable hosted audio for real/sensitive inputs; use synthetic audio only; keep real user test local/de-identified | June 12 / 13 |
+| Stale license language | Plan still cites old standalone-audio or text-only Nemotron license language | Replace with NVIDIA Open Model Agreement and NOTICE/attribution requirements | June 5 |
 | Fine-tune regresses safety | Any June 10 kill criterion trips (recall down, unsafe diagnosis up, JSON breaks, stops citing, over-refusal) | Roll back to base or the prior checkpoint; publish base as the demo model | June 10 |
 | AI invents or overstates a protocol pathway | Selected pathway is not in retrieved cards, or rationale implies diagnosis/treatment | Force card-only output, tighten validator, add targeted repair examples, or ship canned traces | June 9 / 12 |
 | AI downgrades deterministic red flags | Output urgency is below the rules engine result, or language softens escalation cues | Fail validation; show deterministic warning; repair prompt/fine-tune or fall back to base/canned traces | June 7 / 10 |
@@ -1468,6 +1608,7 @@ Unit-test the safety-critical deterministic components (they must be boringly co
 * `rules.py` — each red-flag condition fires on a gold positive input and stays silent on a gold negative.
 * `validators.py` — rejects invalid JSON, empty `source_cards`, citations to non-existent cards, forbidden phrases, `protocol_urgency` below the deterministic red-flag floor, uncited pathways, and ungrounded checklist/handoff facts.
 * `schemas.py` — enum fields (`protocol_urgency`) reject out-of-vocabulary values.
+* `audio_intake.py` — produces provisional suggestions only, never overwrites manual values, blocks navigation until confirmation, and records audio provenance without raw audio.
 * `navigator.py` — mock and live outputs preserve red-flag locks, cite cards for every selected pathway, avoid diagnosis/prescribing, and keep checklist/SBAR facts grounded.
 
 Use small gold fixtures under `tests/`; run with `pytest`. "Do unit tests pass?" is part of the §13 daily checklist. Owner-days: June 6 (scaffold tests with the skeleton), June 7 (rules/validators tests once those modules exist).
@@ -1475,10 +1616,11 @@ Use small gold fixtures under `tests/`; run with `pytest`. "Do unit tests pass?"
 [1]: https://huggingface.co/build-small-hackathon?utm_source=chatgpt.com "Build Small Hackathon"
 [2]: https://www.who.int/news/item/18-01-2024-who-releases-ai-ethics-and-governance-guidance-for-large-multi-modal-models?utm_source=chatgpt.com "WHO releases AI ethics and governance guidance for ..."
 [3]: https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software?utm_source=chatgpt.com "Clinical Decision Support Software - Guidance"
-[4]: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16?utm_source=chatgpt.com "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
-[5]: https://arxiv.org/abs/2512.20848?utm_source=chatgpt.com "Nemotron 3 Nano: Open, Efficient Mixture-of-Experts Hybrid Mamba-Transformer Model for Agentic Reasoning"
-[6]: https://huggingface.co/bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF?utm_source=chatgpt.com "bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF"
+[4]: https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"
+[5]: https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Omni-report.pdf "NVIDIA Nemotron 3 Omni Technical Report"
+[6]: https://huggingface.co/ggml-org/NVIDIA-Nemotron-3-Nano-Omni "ggml-org/NVIDIA-Nemotron-3-Nano-Omni"
 [7]: https://modal.com/pricing?utm_source=chatgpt.com "Plan Pricing"
 [8]: https://modal.com/docs/guide/gpu?utm_source=chatgpt.com "GPU acceleration | Modal Docs"
-[9]: https://unsloth.ai/docs/models/nemotron-3?utm_source=chatgpt.com "NVIDIA Nemotron 3 Nano - How To Run Guide"
+[9]: https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF "unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF"
 [10]: https://huggingface.co/pricing?utm_source=chatgpt.com "Pricing"
+[11]: https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning "NVIDIA Nemotron 3 Nano Omni endpoint"
