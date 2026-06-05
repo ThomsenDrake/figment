@@ -1,67 +1,5 @@
 {
-  "audio": {
-    "audio_intake_path": "canned_audio_demo",
-    "audio_model_id": null,
-    "audio_runtime": "canned",
-    "confirmation_status": "confirmed",
-    "confirmed_intake_required": true,
-    "field_fill_model_id": null,
-    "missing_or_unclear_fields": [
-      "allergies",
-      "medications",
-      "available_supplies",
-      "vitals"
-    ],
-    "provisional_red_flag_mentions": [
-      "no urine"
-    ],
-    "raw_audio_stored": false,
-    "suggested_fields": [
-      {
-        "draft_value": "Four-year-old at a disaster shelter with repeated watery stool, very tired, dry mouth, and no urine since this morning. I think pulse is fast but I have not taken a full set of vitals.",
-        "field": "responder_note",
-        "needs_confirmation": false,
-        "source_snippet": "Four-year-old at a disaster shelter with repeated watery stool, very tired, dry mouth, and no urine since this morning. I think pulse is fast but I have not tak",
-        "source_timecode": "",
-        "status": "accepted"
-      },
-      {
-        "draft_value": "4 years",
-        "field": "patient_age",
-        "needs_confirmation": false,
-        "source_snippet": "Four-year-old at a disaster shelter with rep",
-        "source_timecode": "",
-        "status": "accepted"
-      },
-      {
-        "draft_value": "possible dehydration concern after repeated watery stool",
-        "field": "chief_concern",
-        "needs_confirmation": false,
-        "source_snippet": "a disaster shelter with repeated watery stool, very tired, dry mouth, and no urine si",
-        "source_timecode": "",
-        "status": "accepted"
-      },
-      {
-        "draft_value": "very tired, dry mouth, no urine since morning",
-        "field": "symptoms",
-        "needs_confirmation": false,
-        "source_snippet": "atery stool, very tired, dry mouth, and no urine since this morning. I think pulse is fa",
-        "source_timecode": "",
-        "status": "accepted"
-      },
-      {
-        "draft_value": "Pulse fast by palpation; full vitals pending",
-        "field": "vitals",
-        "needs_confirmation": false,
-        "source_snippet": "nd no urine since this morning. I think pulse is fast but I have not taken a full set",
-        "source_timecode": "",
-        "status": "edited"
-      }
-    ],
-    "task": "audio_intake_draft",
-    "transcript": "Four-year-old at a disaster shelter with repeated watery stool, very tired, dry mouth, and no urine since this morning. I think pulse is fast but I have not taken a full set of vitals.",
-    "unclear_spans": []
-  },
+  "audio": null,
   "events": [
     "input captured",
     "rules evaluated",
@@ -70,22 +8,23 @@
     "validation complete"
   ],
   "input_captured": {
-    "confirmed_intake_hash": "b67ee7bd962cf709",
+    "confirmed_intake_hash": "63209e9146a5832d",
     "structured_intake": {
       "allergies": "unknown",
       "available_supplies": "oral rehydration solution, radio, transport team",
-      "chief_concern": "possible dehydration concern after repeated watery stool",
+      "chief_concern": "vomiting and dehydration concern",
       "confirmed": true,
       "medications": "none reported",
-      "patient_age": "4 years",
+      "patient_age": "7",
       "pregnancy_status": "not_applicable",
-      "responder_note": "Medic reviewed the audio draft and corrected vitals before navigation.",
+      "responder_note": "Child after flood cleanup cannot keep fluids down.",
       "setting": "shelter clinic",
-      "symptoms": "very tired, dry mouth, no urine since morning",
-      "vitals": "Pulse fast by palpation; full vitals pending"
+      "symptoms": "lethargic, very dry mouth, no urine since morning",
+      "vitals": "temperature and blood pressure missing"
     }
   },
   "model_route": {
+    "fallback_reason": null,
     "fallback_tier": "canned",
     "model_backend": "canned",
     "model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
@@ -98,11 +37,11 @@
         "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
       },
       {
-        "card_id": "SAFETY-BOUNDARIES-v1",
+        "card_id": "REFERRAL-SBAR-v1",
         "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
       },
       {
-        "card_id": "REFERRAL-SBAR-v1",
+        "card_id": "SAFETY-BOUNDARIES-v1",
         "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context."
       }
     ],
@@ -115,19 +54,19 @@
       "Do not downgrade red flags."
     ],
     "handoff_note_sbar": {
-      "assessment_observations_only": "Observed/reported: very tired, dry mouth, no urine since morning. Vitals: Pulse fast by palpation; full vitals pending.",
+      "assessment_observations_only": "Observed/reported: lethargic, very dry mouth, no urine since morning. Vitals: temperature and blood pressure missing.",
       "background": "Setting: shelter clinic. Pediatric dehydration red flag.",
       "handoff_request": "Request review/escalation per cited local protocol cards.",
-      "situation": "possible dehydration concern after repeated watery stool"
+      "situation": "vomiting and dehydration concern"
     },
     "intake_facts": [
       {
-        "fact": "Concern: possible dehydration concern after repeated watery stool",
+        "fact": "Concern: vomiting and dehydration concern",
         "source": "structured_field",
         "status": "reported"
       },
       {
-        "fact": "Vitals: Pulse fast by palpation; full vitals pending",
+        "fact": "Vitals: temperature and blood pressure missing",
         "source": "structured_field",
         "status": "reported"
       }
@@ -142,14 +81,14 @@
       "work of breathing",
       "hydration/perfusion signs"
     ],
-    "protocol_urgency": "urgent",
+    "protocol_urgency": "emergency",
     "red_flags": [
       {
         "card_id": "PED-DEHYD-RED-FLAGS-v1",
-        "evidence": "no urine",
+        "evidence": "lethargic",
         "label": "Pediatric dehydration red flag",
         "rule_id": "PED-DEHYD-001",
-        "urgency": "urgent"
+        "urgency": "emergency"
       }
     ],
     "responder_checklist": [
@@ -161,11 +100,11 @@
     "safety_boundary": "Prototype protocol navigation only; no condition label, medication order, or autonomous routing.",
     "source_cards": [
       "PED-DEHYD-RED-FLAGS-v1",
-      "SAFETY-BOUNDARIES-v1",
       "REFERRAL-SBAR-v1",
+      "SAFETY-BOUNDARIES-v1",
       "AMS-RED-FLAGS-v1",
-      "STROKE-SIGNS-v1",
-      "RESP-DISTRESS-RED-FLAGS-v1"
+      "FEVER-RED-FLAGS-v1",
+      "WOUND-INFECTION-ESCALATION-v1"
     ]
   },
   "prompt_template_hash": "9a176778efcd60ba",
@@ -173,19 +112,19 @@
   "red_flags": [
     {
       "card_id": "PED-DEHYD-RED-FLAGS-v1",
-      "evidence": "no urine",
+      "evidence": "lethargic",
       "label": "Pediatric dehydration red flag",
       "rule_id": "PED-DEHYD-001",
-      "urgency": "urgent"
+      "urgency": "emergency"
     }
   ],
   "retrieved_card_ids": [
     "PED-DEHYD-RED-FLAGS-v1",
-    "SAFETY-BOUNDARIES-v1",
     "REFERRAL-SBAR-v1",
+    "SAFETY-BOUNDARIES-v1",
     "AMS-RED-FLAGS-v1",
-    "STROKE-SIGNS-v1",
-    "RESP-DISTRESS-RED-FLAGS-v1"
+    "FEVER-RED-FLAGS-v1",
+    "WOUND-INFECTION-ESCALATION-v1"
   ],
   "validator_result": {
     "failures": [],

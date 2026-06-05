@@ -57,3 +57,21 @@ def test_pregnancy_danger_sign_still_fires_for_confirmed_pregnancy() -> None:
     }
 
     assert "PREG-001" in _rule_ids(intake)
+
+
+def test_month_based_pediatric_age_counts_as_pediatric() -> None:
+    intake = {
+        "confirmed": True,
+        "setting": "shelter clinic",
+        "patient_age": "18 months",
+        "pregnancy_status": "not_applicable",
+        "chief_concern": "possible dehydration",
+        "symptoms": "no urine and very dry mouth",
+        "vitals": "",
+        "allergies": "",
+        "medications": "",
+        "available_supplies": "",
+        "responder_note": "",
+    }
+
+    assert "PED-DEHYD-001" in _rule_ids(intake)

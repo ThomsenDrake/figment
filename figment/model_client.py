@@ -82,28 +82,51 @@ class ModelClient:
                 context.get("urgency_floor", "routine"),
             )
         if self.config.model_backend == "llama_cpp":
-            return self._call_openai_compatible(self.config.llama_base_url, prompt)
+            return self._call_openai_compatible(
+                self.config.llama_base_url,
+                prompt,
+                model_id=self.config.local_model_id,
+                auth_headers={},
+            )
         if self.config.model_backend in {"hosted_omni", "hosted_text_nemotron"}:
-            endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url
+            endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url or self.config.nvidia_base_url
             if not endpoint:
-                raise ModelClientError("hosted model backend requires OMNI_ENDPOINT_URL or HF_ENDPOINT_URL")
-            return self._call_openai_compatible(endpoint, prompt)
+                raise ModelClientError("hosted model backend requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
+            is_nvidia_endpoint = "integrate.api.nvidia.com" in endpoint
+            return self._call_openai_compatible(
+                endpoint,
+                prompt,
+                model_id=self.config.active_model_id,
+                auth_headers=self._hosted_auth_headers(endpoint),
+                include_nvidia_options=self.config.model_backend == "hosted_omni" and is_nvidia_endpoint,
+            )
         raise ModelClientError(f"unsupported model backend: {self.config.model_backend}")
 
-    def _call_openai_compatible(self, base_url: str, prompt: str) -> dict[str, Any]:
+    def _call_openai_compatible(
+        self,
+        base_url: str,
+        prompt: str,
+        *,
+        model_id: str,
+        auth_headers: dict[str, str],
+        include_nvidia_options: bool = False,
+    ) -> dict[str, Any]:
         url = base_url.rstrip("/")
         if not url.endswith("/chat/completions"):
             url = f"{url}/chat/completions"
         body = {
-            "model": self.config.active_model_id,
+            "model": model_id,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
+            "temperature": 0.0,
+            "max_tokens": 4096,
             "response_format": {"type": "json_object"},
         }
+        if include_nvidia_options:
+            body["chat_template_kwargs"] = {"enable_thinking": False}
         request = urllib.request.Request(
             url,
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", **self._auth_headers()},
+            headers={"Content-Type": "application/json", **auth_headers},
             method="POST",
         )
         try:
@@ -111,16 +134,31 @@ class ModelClient:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise ModelClientError(f"model backend failed: {exc}") from exc
-        content = payload.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ModelClientError("model response did not include choices")
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise ModelClientError("model response choice was not an object")
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            raise ModelClientError("model response did not include a message")
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise ModelClientError("model response content was not text")
         try:
             return _parse_json_object(content)
         except json.JSONDecodeError as exc:
             raise ModelClientError("model response was not valid JSON") from exc
 
-    def _auth_headers(self) -> dict[str, str]:
-        if not self.config.hf_token:
-            return {}
-        return {"Authorization": f"Bearer {self.config.hf_token}"}
+    def _hosted_auth_headers(self, endpoint: str) -> dict[str, str]:
+        if "integrate.api.nvidia.com" in endpoint:
+            if not self.config.nvidia_api_key:
+                raise ModelClientError("hosted NVIDIA backend requires NVIDIA_API_KEY")
+            return {"Authorization": f"Bearer {self.config.nvidia_api_key}"}
+        if self.config.hf_token:
+            return {"Authorization": f"Bearer {self.config.hf_token}"}
+        return {}
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:

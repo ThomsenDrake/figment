@@ -10,7 +10,7 @@ The product target:
 
 The hackathon target:
 
-> Ship a polished Gradio Space by **June 15**, with a Nemotron Omni-powered app, a published fine-tune or adapter if feasible, an open synthetic dataset, demo traces, and a field-notes writeup.
+> Ship a polished Gradio Space by **June 15**, with a Nemotron Omni-powered app, hosted and local runtime paths, an open synthetic dataset if time allows, demo traces, and a field-notes writeup. Fine-tuning is deferred unless the runtime demo, safety validation, and local/offline proof are already green.
 
 Stretch-goal note: if the core Omni submission is already green, Figment may evaluate a split non-Omni text + ASR path using base/text Nemotron 3 Nano plus Parakeet RNNT 1.1B. That path is optional, gated, and not reflected in the mockups. It does not reopen the frozen primary architecture: **Nemotron Omni remains the v1 default and submission story.**
 
@@ -688,7 +688,7 @@ generate → critique → revise → deterministic validate → dedupe → split
 
 # 7. Fine-tuning plan
 
-Modal gives you enough budget to attempt a real Omni LoRA run if tooling support is proven. Modal lists A100 80GB at **$0.000694/sec**, H100 at **$0.001097/sec**, L40S at **$0.000542/sec**, and L4 at **$0.000222/sec**. ([Modal][7])
+Fine-tuning is no longer on the critical path. Modal may still be useful for optional later eval or adapter experiments, but the current priority is a working base Omni app through hosted NVIDIA API mode plus local OpenAI-compatible mode. Modal lists A100 80GB at **$0.000694/sec**, H100 at **$0.001097/sec**, L40S at **$0.000542/sec**, and L4 at **$0.000222/sec**. ([Modal][7])
 
 Arithmetic:
 
@@ -1206,7 +1206,7 @@ llama-server \
 
 ### Goals
 
-Run the real LoRA job.
+Deferred. Do not run the real LoRA job until the hosted Space, base-model navigator, safety validation, and local/offline proof are already reliable.
 
 ### Tasks
 
@@ -1244,7 +1244,7 @@ A boring safe model beats a dramatic unsafe one. This is medicine-adjacent, not 
 
 ### Goals
 
-Prove the data and training stack before the real Omni run.
+Deferred. Use this slot for base-model eval and runtime hardening unless fine-tuning is explicitly reopened.
 
 ### Tasks
 

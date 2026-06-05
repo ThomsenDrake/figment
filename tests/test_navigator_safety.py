@@ -36,6 +36,14 @@ class UnsafeDowngradingModelClient:
         }
 
 
+class FailingTransportModelClient:
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        raise navigator.ModelClientError("transport failed")
+
+
 def _confirmed_chest_pain_intake() -> dict[str, Any]:
     return {
         "setting": "mobile clinic",
@@ -126,6 +134,24 @@ def test_run_navigation_returns_safe_fallback_for_invalid_model_output(monkeypat
     assert "give 5 mg" not in output_text
     assert trace.navigator_output == output
     assert trace.validator_result["passed"] is True
+    assert trace.model_route["fallback_tier"] == "canned"
+    assert any("fallback applied" in event for event in trace.events)
+
+
+def test_run_navigation_labels_transport_fallback_in_trace(monkeypatch) -> None:
+    monkeypatch.setattr(navigator, "ModelClient", FailingTransportModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    assert output["protocol_urgency"] == "emergency"
+    assert trace.model_route["model_backend"] == "hosted_omni"
+    assert trace.model_route["fallback_tier"] == "canned"
+    assert any("model backend failed" in event for event in trace.events)
 
 
 def test_run_navigation_scrubs_audio_trace_payload(tmp_path: Path) -> None:

@@ -24,6 +24,7 @@
     }
   },
   "model_route": {
+    "fallback_reason": null,
     "fallback_tier": "canned",
     "model_backend": "canned",
     "model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",

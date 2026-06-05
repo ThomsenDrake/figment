@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +17,7 @@ from figment.validators import urgency_floor_from_rules, validate_audio_ready
 
 try:
     import gradio as gr
-except ImportError:  # pragma: no cover - lets unit tests import without gradio installed
+except (ImportError, OSError):  # pragma: no cover - lets unit tests import without gradio installed
     gr = None
 
 
@@ -197,6 +196,7 @@ def build_app(config: FigmentConfig | None = None):
                 transcript = gr.Textbox(label="Dictated intake transcript", lines=3)
                 draft_btn = gr.Button("Draft Audio Fields")
                 audio_json = gr.JSON(label="Audio draft")
+                apply_audio = gr.Button("Apply Audio Draft")
                 confirm_btn = gr.Button("Confirm Intake")
                 intake_json = gr.JSON(label="Confirmed intake")
 
@@ -207,6 +207,7 @@ def build_app(config: FigmentConfig | None = None):
             with gr.Tab(TAB_TITLES[2]):
                 retrieve_btn = gr.Button("Retrieve Protocol Cards")
                 guidance_json = gr.JSON(label="Retrieved protocol cards")
+                guidance_evidence = gr.Textbox(label="Protocol evidence panel", lines=8, interactive=False)
 
             with gr.Tab(TAB_TITLES[3]):
                 nav_btn = gr.Button("Run Navigator")
@@ -215,6 +216,8 @@ def build_app(config: FigmentConfig | None = None):
 
             with gr.Tab(TAB_TITLES[4]):
                 trace_json = gr.JSON(label="Trace")
+                export_trace = gr.Button("Export Trace")
+                trace_file = gr.File(label="Trace download", interactive=False)
 
         fields = [setting, patient_age, pregnancy_status, chief_concern, symptoms, vitals, allergies, medications, supplies, note]
         load_demo.click(_load_demo_case, inputs=[demo_case], outputs=fields)
@@ -223,14 +226,16 @@ def build_app(config: FigmentConfig | None = None):
             inputs=[audio_clip, transcript],
             outputs=[audio_json],
         ).then(lambda x: x, inputs=[audio_json], outputs=[audio_state])
+        apply_audio.click(_apply_audio_draft_ui, inputs=[*fields, audio_state], outputs=[*fields, audio_json, audio_state])
         confirm_btn.click(_confirm_ui_intake, inputs=[*fields, audio_state], outputs=[intake_json, intake_state, audio_state])
         risk_btn.click(_risk_ui, inputs=[intake_state], outputs=[risk_json])
-        retrieve_btn.click(_retrieve_ui, inputs=[intake_state], outputs=[guidance_json])
+        retrieve_btn.click(_retrieve_with_evidence_ui, inputs=[intake_state], outputs=[guidance_json, guidance_evidence])
         nav_btn.click(
             lambda intake, audio_draft: _navigate_ui(intake, audio_draft, config=config),
             inputs=[intake_state, audio_state],
             outputs=[output_json, sbar_text, trace_json, trace_state],
         )
+        export_trace.click(lambda trace: trace_download_path(trace, config=config) if trace else None, inputs=[trace_state], outputs=[trace_file])
         status.value = _status_text(config)
     return demo
 
@@ -260,6 +265,31 @@ def _draft_audio_ui(audio_file: str | None, transcript: str, config: FigmentConf
     return draft_audio_intake(transcript=transcript, config=config, audio_file=audio_file)
 
 
+def _apply_audio_draft_ui(*values: Any) -> list[Any]:
+    *field_values, audio_draft = values
+    if not audio_draft:
+        return [*field_values, None, None]
+    intake = collect_intake(*field_values)
+    for suggestion in audio_draft.get("suggested_fields", []):
+        field = str(suggestion.get("field", ""))
+        value = str(suggestion.get("draft_value", "")).strip()
+        if field in intake and value and not intake.get(field):
+            intake[field] = value
+    fields = [
+        intake["setting"],
+        intake["patient_age"],
+        intake["pregnancy_status"],
+        intake["chief_concern"],
+        intake["symptoms"],
+        intake["vitals"],
+        intake["allergies"],
+        intake["medications"],
+        intake["available_supplies"],
+        intake["responder_note"],
+    ]
+    return [*fields, audio_draft, audio_draft]
+
+
 def _confirm_ui_intake(*values: Any) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
     *field_values, audio_draft = values
     intake = collect_intake(*field_values)
@@ -285,6 +315,70 @@ def _retrieve_ui(intake: dict[str, Any]) -> list[dict[str, Any]]:
     if not intake:
         return []
     return search_protocol_cards(query_from_intake(intake))
+
+
+def _retrieve_with_evidence_ui(intake: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    cards = _retrieve_ui(intake)
+    return cards, protocol_evidence_panel(cards)
+
+
+def protocol_evidence_panel(retrieved_cards: list[dict[str, Any]]) -> str:
+    if not retrieved_cards:
+        return (
+            "Prototype evidence/source material for trained-responder review only; "
+            "no protocol cards retrieved. Use local protocol, supervisor, clinician, "
+            "or emergency pathway rather than improvising."
+        )
+
+    lines = [
+        "Prototype evidence/source material for trained-responder review only; not medical advice.",
+        "",
+        "| Card ID | Title | Cue / boundary | Relevance |",
+        "| --- | --- | --- | --- |",
+    ]
+    for item in retrieved_cards:
+        card = item.get("card") if isinstance(item.get("card"), dict) else item
+        card_id = _compact_cell(str(item.get("card_id") or card.get("card_id") or "unknown"))
+        title = _compact_cell(str(item.get("title") or card.get("title") or "Untitled card"))
+        cue = _compact_cell(_evidence_cue(card))
+        relevance = _compact_cell(_relevance_text(item))
+        lines.append(f"| {card_id} | {title} | {cue} | {relevance} |")
+    return "\n".join(lines)
+
+
+def _evidence_cue(card: dict[str, Any]) -> str:
+    for field in ("escalation_criteria", "red_flags", "safety_boundary"):
+        value = card.get(field)
+        if isinstance(value, list):
+            for item in value:
+                text = str(item).strip()
+                if text:
+                    return text
+        elif value:
+            return str(value).strip()
+    return "No escalation cue or safety boundary summary available."
+
+
+def _relevance_text(result: dict[str, Any]) -> str:
+    parts: list[str] = []
+    score = result.get("score")
+    if isinstance(score, int | float):
+        parts.append(f"score={float(score):.2f}")
+    elif score not in (None, ""):
+        parts.append(f"score={score}")
+
+    snippet = result.get("snippet") or result.get("matched_text") or result.get("summary")
+    if snippet:
+        parts.append(str(snippet).strip())
+
+    return "; ".join(parts) if parts else "No relevance score or snippet available."
+
+
+def _compact_cell(value: str, max_chars: int = 180) -> str:
+    text = " ".join(value.split())
+    if len(text) > max_chars:
+        text = text[: max_chars - 3].rstrip() + "..."
+    return text.replace("|", "\\|")
 
 
 def _navigate_ui(

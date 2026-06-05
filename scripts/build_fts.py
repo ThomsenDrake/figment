@@ -25,14 +25,17 @@ def _card_text(card: Any) -> str:
     return ""
 
 
-def _load_cards(card_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
+def _load_cards(card_dir: str | Path) -> list[tuple[Path, dict[str, Any]]]:
+    card_dir = Path(card_dir)
     cards: list[tuple[Path, dict[str, Any]]] = []
     for path in sorted(card_dir.glob("*.json")):
         cards.append((path, json.loads(path.read_text(encoding="utf-8"))))
     return cards
 
 
-def build_index(card_dir: Path = DEFAULT_CARD_DIR, index_path: Path = DEFAULT_INDEX_PATH) -> int:
+def build_index(card_dir: str | Path = DEFAULT_CARD_DIR, index_path: str | Path = DEFAULT_INDEX_PATH) -> int:
+    card_dir = Path(card_dir)
+    index_path = Path(index_path)
     cards = _load_cards(card_dir)
     if not cards:
         raise ValueError(f"no protocol cards found in {card_dir}")

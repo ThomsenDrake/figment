@@ -69,6 +69,9 @@ def validate_navigator_output(
     output: dict[str, Any],
     known_card_ids: set[str],
     urgency_floor: str = "routine",
+    *,
+    confirmed_intake: dict[str, Any] | None = None,
+    rule_results: list[dict[str, Any]] | None = None,
 ) -> ValidationResult:
     result = ValidationResult(passed=True)
     if not isinstance(output, dict):
@@ -96,9 +99,123 @@ def validate_navigator_output(
         elif card_id not in source_cards:
             result.add(f"candidate pathway {card_id} is not cited in source_cards")
 
+    handoff = output.get("handoff_note_sbar")
+    required_handoff_fields = {
+        "situation",
+        "background",
+        "assessment_observations_only",
+        "handoff_request",
+    }
+    if not isinstance(handoff, dict):
+        result.add("handoff_note_sbar must be an object")
+    else:
+        missing_handoff = sorted(field for field in required_handoff_fields if not handoff.get(field))
+        if missing_handoff:
+            result.add(f"handoff_note_sbar is missing: {', '.join(missing_handoff)}")
+        elif confirmed_intake is not None:
+            _validate_handoff_grounding(result, handoff, confirmed_intake, rule_results or [])
+
     all_text = "\n".join(_text_values(output))
     for pattern in FORBIDDEN_PATTERNS:
-        match = pattern.search(all_text)
-        if match:
+        for match in pattern.finditer(all_text):
+            if _is_negated_safety_phrase(all_text, match.start()):
+                continue
             result.add(f"forbidden clinical language: {match.group(0)}")
+            break
     return result
+
+
+def _is_negated_safety_phrase(text: str, match_start: int) -> bool:
+    sentence_start = max(text.rfind(boundary, 0, match_start) for boundary in ".!?\n;")
+    prefix = text[sentence_start + 1 : match_start].lower()
+    tail = prefix[-80:]
+    if re.search(r"\b(?:do not|don't|never|must not|cannot|does not|not)\s+$", tail):
+        return True
+    if re.search(r"\bnot\s+an?\s+$", tail):
+        return True
+
+    list_marker = re.search(r"\b(?:do not|don't|never|must not|cannot|does not)\s+([^.!?\n;]*)$", prefix)
+    if not list_marker:
+        return False
+    allowed_list_text = re.sub(
+        r"\b(?:diagnos(?:e|is|ed)|prescrib(?:e|ing|ed)|dose|dosing|override|treat(?:ment)?|"
+        r"condition|label|drug|medication|order|start|antibiotic|antibiotics|opioid|insulin|or|and)\b|[,/()\s-]+",
+        "",
+        list_marker.group(1),
+    )
+    return not allowed_list_text
+
+
+GROUNDING_STOPWORDS = {
+    "and",
+    "the",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "only",
+    "protocol",
+    "local",
+    "cited",
+    "review",
+    "request",
+    "escalate",
+    "escalation",
+    "observed",
+    "reported",
+    "vitals",
+    "setting",
+    "field",
+    "clinic",
+    "case",
+    "synthetic",
+}
+
+
+def _validate_handoff_grounding(
+    result: ValidationResult,
+    handoff: dict[str, Any],
+    confirmed_intake: dict[str, Any],
+    rule_results: list[dict[str, Any]],
+) -> None:
+    rule_text = " ".join(
+        str(rule.get(field, ""))
+        for rule in rule_results
+        for field in ("rule_id", "label", "evidence", "card_id")
+    )
+    grounding_sources = {
+        "situation": [
+            confirmed_intake.get("chief_concern", ""),
+            confirmed_intake.get("symptoms", ""),
+            confirmed_intake.get("responder_note", ""),
+        ],
+        "background": [
+            confirmed_intake.get("setting", ""),
+            confirmed_intake.get("patient_age", ""),
+            confirmed_intake.get("pregnancy_status", ""),
+            rule_text,
+        ],
+        "assessment_observations_only": [
+            confirmed_intake.get("symptoms", ""),
+            confirmed_intake.get("vitals", ""),
+            confirmed_intake.get("responder_note", ""),
+            rule_text,
+        ],
+    }
+    for field, sources in grounding_sources.items():
+        field_tokens = _grounding_tokens(handoff.get(field, ""))
+        if not field_tokens:
+            continue
+        source_tokens = _grounding_tokens(*sources)
+        if not field_tokens & source_tokens:
+            result.add(f"handoff_note_sbar {field} is not grounded in confirmed intake or rules")
+
+
+def _grounding_tokens(*values: Any) -> set[str]:
+    text = " ".join(_text_values(list(values))).lower()
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text)
+        if len(token) >= 3 and token not in GROUNDING_STOPWORDS
+    }

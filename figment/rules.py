@@ -45,8 +45,17 @@ def _find(patterns: tuple[str, ...], text: str) -> str | None:
 
 def _is_pediatric(intake: Mapping[str, Any], text: str) -> bool:
     age = str(intake.get("patient_age", "")).strip().lower()
-    age_match = re.search(r"\b(\d{1,2})\s*(?:y|yr|yrs|year|years)?\b", age)
-    if age_match and int(age_match.group(1)) < 18:
+    month_match = re.search(r"\b(\d{1,3})\s*(?:mo|mos|month|months)\b", age)
+    if month_match:
+        return int(month_match.group(1)) < 216
+    week_day_match = re.search(r"\b(\d{1,3})\s*(?:d|day|days|w|wk|wks|week|weeks)\b", age)
+    if week_day_match:
+        return True
+    year_match = re.search(r"\b(\d{1,3})\s*(?:y|yr|yrs|year|years)\b", age)
+    if year_match and int(year_match.group(1)) < 18:
+        return True
+    bare_age_match = re.fullmatch(r"\s*(\d{1,2})\s*", age)
+    if bare_age_match and int(bare_age_match.group(1)) < 18:
         return True
     return bool(re.search(r"\b(child|infant|toddler|baby|pediatric)\b", text))
 

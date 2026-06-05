@@ -72,6 +72,190 @@ def test_validators_reject_downgraded_or_unsafe_navigator_output() -> None:
     assert any("forbidden clinical language" in item for item in result.failures)
 
 
+def test_validator_allows_negated_safety_boundary_language() -> None:
+    output = {
+        "protocol_urgency": "emergency",
+        "candidate_protocol_pathways": [
+            {"card_id": "CHEST-PAIN-v1", "reason_relevant": "Chest pain was reported."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": ["Do not diagnose the cause."],
+        "source_cards": ["CHEST-PAIN-v1"],
+        "handoff_note_sbar": {
+            "situation": "Chest pain",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Pain reported",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "This is not a diagnosis or prescription and cannot diagnose, prescribe, dose, or override local protocol.",
+    }
+
+    result = validate_navigator_output(output, {"CHEST-PAIN-v1"}, urgency_floor="emergency")
+
+    assert result.passed
+
+
+def test_validator_allows_does_not_diagnose_or_prescribe_boundary_language() -> None:
+    output = {
+        "protocol_urgency": "routine",
+        "candidate_protocol_pathways": [
+            {"card_id": "SAFETY-BOUNDARIES-v1", "reason_relevant": "Safety boundary review."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": [],
+        "source_cards": ["SAFETY-BOUNDARIES-v1"],
+        "handoff_note_sbar": {
+            "situation": "Mild symptoms",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Temperature normal.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
+    }
+
+    result = validate_navigator_output(output, {"SAFETY-BOUNDARIES-v1"})
+
+    assert result.passed
+
+
+def test_validator_allows_negated_do_not_start_or_prescribe_list() -> None:
+    output = {
+        "protocol_urgency": "urgent",
+        "candidate_protocol_pathways": [
+            {"card_id": "WOUND-INFECTION-ESCALATION-v1", "reason_relevant": "Wound cue."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": [
+            "Do not start antibiotics, prescribe medication, or provide dosing instructions unless local protocol explicitly provides them."
+        ],
+        "source_cards": ["WOUND-INFECTION-ESCALATION-v1"],
+        "handoff_note_sbar": {
+            "situation": "Wound concern",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Spreading redness reported.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+
+    result = validate_navigator_output(output, {"WOUND-INFECTION-ESCALATION-v1"}, urgency_floor="urgent")
+
+    assert result.passed
+
+
+def test_validator_rejects_incomplete_handoff_schema() -> None:
+    output = {
+        "protocol_urgency": "urgent",
+        "candidate_protocol_pathways": [
+            {"card_id": "CHEST-PAIN-v1", "reason_relevant": "Chest pain was reported."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": ["Do not diagnose the cause."],
+        "source_cards": ["CHEST-PAIN-v1"],
+        "handoff_note_sbar": {
+            "situation": "Chest pain",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Pain reported",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+
+    result = validate_navigator_output(output, {"CHEST-PAIN-v1"}, urgency_floor="urgent")
+
+    assert not result.passed
+    assert any("handoff_note_sbar is missing" in item for item in result.failures)
+
+
+def test_validator_rejects_forbidden_language_after_unrelated_not() -> None:
+    output = {
+        "protocol_urgency": "routine",
+        "candidate_protocol_pathways": [
+            {"card_id": "SAFETY-BOUNDARIES-v1", "reason_relevant": "Safety boundary review."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": [],
+        "source_cards": ["SAFETY-BOUNDARIES-v1"],
+        "handoff_note_sbar": {
+            "situation": "Mild symptoms",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Patient not stable, prescribe opioid now.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+
+    result = validate_navigator_output(output, {"SAFETY-BOUNDARIES-v1"})
+
+    assert not result.passed
+    assert any("forbidden clinical language: prescribe" in item for item in result.failures)
+
+
+def test_validator_rejects_ungrounded_sbar_when_intake_context_is_available() -> None:
+    output = {
+        "protocol_urgency": "routine",
+        "candidate_protocol_pathways": [
+            {"card_id": "SAFETY-BOUNDARIES-v1", "reason_relevant": "Safety boundary review."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": ["Do not diagnose."],
+        "source_cards": ["SAFETY-BOUNDARIES-v1"],
+        "handoff_note_sbar": {
+            "situation": "Head injury with loss of consciousness",
+            "background": "Fall from ladder at home",
+            "assessment_observations_only": "Blood pressure 220/140 and skull fracture observed.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+    intake = {
+        "setting": "shelter clinic",
+        "patient_age": "40",
+        "pregnancy_status": "not_applicable",
+        "chief_concern": "mild cough",
+        "symptoms": "speaking normally, no distress cues",
+        "vitals": "temperature normal",
+        "allergies": "unknown",
+        "medications": "unknown",
+        "available_supplies": "radio",
+        "responder_note": "No injury reported.",
+        "confirmed": True,
+    }
+
+    result = validate_navigator_output(
+        output,
+        {"SAFETY-BOUNDARIES-v1"},
+        confirmed_intake=intake,
+        rule_results=[],
+    )
+
+    assert not result.passed
+    assert any("handoff_note_sbar" in item and "not grounded" in item for item in result.failures)
+
+
 def test_audio_drafts_are_non_authoritative_until_confirmed() -> None:
     app = importlib.import_module("app")
     disabled_config = FigmentConfig(enable_audio_intake=False, audio_backend="none").validated()

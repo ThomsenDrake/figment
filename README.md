@@ -6,7 +6,7 @@ Figment uses deterministic rules for danger signs and an AI protocol navigator f
 
 > ⚠️ **Figment is not a medical device.** It does not diagnose, prescribe, or replace a clinician. It is a prototype for protocol navigation, escalation support, and documentation in low-connectivity environments, for use by trained responders. See [Safety & non-goals](#safety--non-goals).
 
-- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The Gradio scaffold, deterministic rules, canned fallback, traces, and tests run locally; hosted Omni and local GGUF model plumbing remain integration work.
+- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The Gradio scaffold, deterministic rules, hosted NVIDIA Omni client, local OpenAI-compatible client, canned fallback, traces, and tests run locally; the hosted NVIDIA API smoke test is green, while the local GGUF runtime still needs a real model boot test.
 - **Track:** 🏡 Backyard AI (solve a real problem for a specific, real person you know).
 - **Built for:** a real disaster-response volunteer trained in disaster-response first aid and local protocol use; name withheld for privacy.
 - **Model:** NVIDIA **Nemotron 3 Nano Omni 30B-A3B Reasoning** as the v1 default. The model-card body reports 31B total parameters; the workback plan tracks the HF-sidebar count ambiguity and fallback story.
@@ -53,7 +53,7 @@ Gradio Blocks UI
 Two principles make this safe rather than chatty:
 
 - **Rules before the model.** Danger-sign detection is deterministic code, not a model guess, so a red flag can't be "reasoned away."
-- **The cards are the source of truth; the fine-tune is a behavior harness.** The model is taught to stay inside retrieved cards, cite card IDs, ask for missing observations, preserve deterministic red-flag floors, build checklists, and refuse out-of-scope requests — not to memorize medical facts.
+- **The cards are the source of truth; the model is a behavior harness.** The base hosted/local model is prompted and validated to stay inside retrieved cards, cite card IDs, ask for missing observations, preserve deterministic red-flag floors, build checklists, and refuse out-of-scope requests — not to memorize medical facts. Fine-tuning is deferred unless the runtime demo is already safe and reliable.
 
 ---
 
@@ -68,6 +68,7 @@ Local/off-grid proof targets the Omni GGUF route after verification:
 | Artifact | Use |
 | -------- | --- |
 | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | primary hosted/self-hosted Omni model ID |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | NVIDIA API Catalog / NIM chat-completions model ID |
 | `ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M` | target local text-navigation proof through llama.cpp |
 | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` + `nvidia/parakeet-rnnt-1.1b` | stretch-only split stack, disabled unless `ALLOW_STRETCH_STACK=true` |
 
@@ -87,13 +88,27 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 ```
 
-### 1. Run the app locally
+### 1. Run the app with the hosted NVIDIA API
 
-The scaffold runs without a live model by using the explicit canned fallback:
+Copy `.env.example` to `.env`, set `MODEL_BACKEND=hosted_omni`, and add `NVIDIA_API_KEY`. The hosted route uses the NVIDIA API Catalog OpenAI-compatible endpoint:
+
+```dotenv
+MODEL_BACKEND=hosted_omni
+MODEL_STACK=omni_native
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL_ID=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+NVIDIA_API_KEY=nvapi-...
+```
+
+Then run:
 
 ```bash
 python app.py
 ```
+
+If the hosted model is unavailable or returns invalid JSON, Figment falls back to the deterministic canned navigator output and still validates the result.
+
+### 2. Run against a local OpenAI-compatible server
 
 To target a local OpenAI-compatible llama.cpp server after the Omni GGUF path is verified:
 
@@ -108,9 +123,17 @@ llama-server \
   --top-p 0.9
 ```
 
-Set `MODEL_BACKEND=llama_cpp` and `LLAMA_BASE_URL=http://127.0.0.1:8001` in `.env`.
+Set `MODEL_BACKEND=llama_cpp`, `LLAMA_BASE_URL=http://127.0.0.1:8001/v1`, and `LOCAL_MODEL_ID=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` in `.env`.
 
-### 2. Hosted demo
+### 3. Canned fallback
+
+The scaffold can still run without any live model:
+
+```dotenv
+MODEL_BACKEND=canned
+```
+
+### 4. Hosted demo
 
 A Gradio Space is hosted under the **build-small-hackathon** Hugging Face org:
 

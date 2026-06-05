@@ -15,6 +15,8 @@ STRETCH_TEXT_MODEL_ID = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 STRETCH_BASE_MODEL_ID = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-Base-BF16"
 STRETCH_AUDIO_MODEL_ID = "nvidia/parakeet-rnnt-1.1b"
 STRETCH_GGUF_MODEL_ID = "bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF"
+NVIDIA_OMNI_API_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+NVIDIA_API_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 MODEL_STACKS = {"omni_native", "base_nano_parakeet"}
 MODEL_BACKENDS = {"hosted_omni", "llama_cpp", "hosted_text_nemotron", "canned"}
@@ -38,6 +40,10 @@ class FigmentConfig:
     allow_stretch_stack: bool = False
     hf_model_id: str = OMNI_MODEL_ID
     hf_token: str = ""
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = NVIDIA_API_BASE_URL
+    nvidia_model_id: str = NVIDIA_OMNI_API_MODEL_ID
+    local_model_id: str = NVIDIA_OMNI_API_MODEL_ID
     omni_endpoint_url: str = ""
     hf_endpoint_url: str = ""
     llama_base_url: str = "http://127.0.0.1:8001/v1"
@@ -45,6 +51,7 @@ class FigmentConfig:
 
     @classmethod
     def from_env(cls) -> "FigmentConfig":
+        _load_dotenv()
         mode = os.getenv("FIGMENT_MODE", "hosted").strip() or "hosted"
         stack = os.getenv("MODEL_STACK", "omni_native").strip() or "omni_native"
         backend = os.getenv("MODEL_BACKEND", os.getenv("FIGMENT_MODE", "canned")).strip()
@@ -62,6 +69,10 @@ class FigmentConfig:
             allow_stretch_stack=allow_stretch,
             hf_model_id=os.getenv("HF_MODEL_ID", OMNI_MODEL_ID).strip() or OMNI_MODEL_ID,
             hf_token=os.getenv("HF_TOKEN", "").strip(),
+            nvidia_api_key=os.getenv("NVIDIA_API_KEY", "").strip(),
+            nvidia_base_url=os.getenv("NVIDIA_BASE_URL", NVIDIA_API_BASE_URL).strip() or NVIDIA_API_BASE_URL,
+            nvidia_model_id=os.getenv("NVIDIA_MODEL_ID", NVIDIA_OMNI_API_MODEL_ID).strip() or NVIDIA_OMNI_API_MODEL_ID,
+            local_model_id=os.getenv("LOCAL_MODEL_ID", NVIDIA_OMNI_API_MODEL_ID).strip() or NVIDIA_OMNI_API_MODEL_ID,
             omni_endpoint_url=os.getenv("OMNI_ENDPOINT_URL", "").strip(),
             hf_endpoint_url=os.getenv("HF_ENDPOINT_URL", "").strip(),
             llama_base_url=os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8001/v1").strip(),
@@ -86,6 +97,8 @@ class FigmentConfig:
             errors.append("AUDIO_BACKEND=parakeet_nemo requires MODEL_STACK=base_nano_parakeet")
         if self.model_backend == "hosted_text_nemotron" and self.model_stack != "base_nano_parakeet":
             errors.append("hosted_text_nemotron backend is stretch-only")
+        if self.model_backend == "hosted_omni" and not (self.nvidia_base_url or self.omni_endpoint_url or self.hf_endpoint_url):
+            errors.append("hosted_omni requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -94,6 +107,10 @@ class FigmentConfig:
     def active_model_id(self) -> str:
         if self.model_stack == "base_nano_parakeet":
             return STRETCH_TEXT_MODEL_ID
+        if self.model_backend == "hosted_omni":
+            return self.nvidia_model_id
+        if self.model_backend == "llama_cpp":
+            return self.local_model_id
         return self.hf_model_id or OMNI_MODEL_ID
 
     @property
@@ -108,3 +125,25 @@ class FigmentConfig:
 def load_config() -> FigmentConfig:
     return FigmentConfig.from_env()
 
+
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        _load_simple_dotenv(Path(".env"))
+        return
+    load_dotenv()
+
+
+def _load_simple_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = value.strip().strip("'\"")

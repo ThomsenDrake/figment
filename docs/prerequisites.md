@@ -19,8 +19,9 @@ Required for the Build Small Hackathon:
 Required:
 
 * Hugging Face token with write access for repo/Space pushes.
-* Hugging Face token or endpoint access for hosted Nemotron 3 Nano live mode.
-* Modal account with credits for fine-tuning and batch eval.
+* NVIDIA API Catalog key for hosted Nemotron 3 Nano Omni live mode.
+* Hugging Face token or endpoint access only if using a dedicated HF endpoint or Space push flow.
+* Modal account with credits for optional future fine-tuning and batch eval.
 
 Build-time optional, depending on the synthetic-data path:
 
@@ -37,7 +38,7 @@ Reference local demo machine:
 
 Local/offline proof target:
 
-* `bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF` with `Q4_K_M` primary.
+* `ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M` with text-navigation proof first.
 * `llama-server` on `http://127.0.0.1:8001`.
 * 16k context by default, 8k fallback.
 
@@ -86,8 +87,13 @@ Copy `.env.example` to `.env` locally and fill secrets there. Do not commit `.en
 Required or expected variables:
 
 * `FIGMENT_MODE` — `hosted`, `local`, or `canned`.
-* `HF_MODEL_ID` — defaults to `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`.
-* `HF_TOKEN` — Hugging Face token for hosted model access and Space secrets.
+* `MODEL_BACKEND` — `hosted_omni`, `llama_cpp`, `hosted_text_nemotron`, or `canned`.
+* `HF_MODEL_ID` — defaults to `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`.
+* `NVIDIA_API_KEY` — NVIDIA API Catalog key for hosted Omni mode.
+* `NVIDIA_BASE_URL` — defaults to `https://integrate.api.nvidia.com/v1`.
+* `NVIDIA_MODEL_ID` — defaults to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+* `LOCAL_MODEL_ID` — local OpenAI-compatible model id or alias.
+* `HF_TOKEN` — Hugging Face token for Space pushes or optional HF endpoint access.
 * `HF_ENDPOINT_URL` — optional dedicated HF Inference Endpoint URL.
 * `LLAMA_BASE_URL` — local llama.cpp OpenAI-compatible endpoint.
 * `FIGMENT_TRACE_DIR` — trace export directory.
@@ -99,7 +105,7 @@ Required or expected variables:
 Hosted live demo:
 
 * Gradio Space under `build-small-hackathon/figment`.
-* HF-hosted Nemotron 3 Nano powers live navigator output.
+* Hosted NVIDIA API Catalog / NIM-compatible Nemotron Omni powers live navigator output.
 * Rules, retrieval, validation, and trace rendering run in the Space.
 
 Local/offline proof:
@@ -112,6 +118,7 @@ Local/offline proof:
 Fallback only:
 
 * Canned traces if hosted model, quota, or Space cold-start reliability fails.
+* Canned navigator output if the live model returns invalid JSON or violates validation.
 
 ## Verification Checklist
 
@@ -129,7 +136,7 @@ Before submission:
 
 ```text
 Space boots cold under build-small-hackathon/figment.
-Hosted live mode returns validated HF-hosted Nemotron output.
+Hosted live mode returns validated NVIDIA-hosted Nemotron output.
 Local llama.cpp mode runs the same demo case without internet.
 No patient PHI is used, logged, or committed.
 ```

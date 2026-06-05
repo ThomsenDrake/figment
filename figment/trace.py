@@ -80,5 +80,5 @@ def write_trace(trace: FigmentTrace | dict[str, Any], path: str | Path) -> Path:
     if isinstance(payload, dict):
         payload["audio"] = scrub_audio_metadata(payload.get("audio"))
         payload["raw_audio_stored"] = False
-    target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    target.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")
     return target

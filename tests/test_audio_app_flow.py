@@ -43,6 +43,113 @@ def test_confirm_intake_does_not_silently_bulk_accept_audio_suggestions() -> Non
     assert confirmed_audio["suggested_fields"][0]["needs_confirmation"] is False
 
 
+def test_rejected_audio_transcript_is_not_passed_to_navigator_prompt(monkeypatch) -> None:
+    app = importlib.import_module("app")
+    import figment.navigator as navigator
+
+    audio_draft = {
+        "audio_intake_path": "omni_native",
+        "audio_runtime": "omni_native",
+        "transcript": "Adult says chest pain from audio only.",
+        "suggested_fields": [
+            {
+                "field": "chief_concern",
+                "draft_value": "chest pain",
+                "source_snippet": "chest pain",
+                "status": "audio_draft",
+                "needs_confirmation": True,
+            }
+        ],
+        "confirmed_intake_required": True,
+        "confirmation_status": "unconfirmed",
+        "raw_audio_stored": False,
+    }
+    confirmed, _, confirmed_audio = app._confirm_ui_intake(
+        "mobile clinic",
+        "52",
+        "not_applicable",
+        "",
+        "",
+        "",
+        "unknown",
+        "unknown",
+        "basic kit",
+        "Typed note remains the source of truth.",
+        audio_draft,
+    )
+    captured: dict[str, str] = {}
+
+    class CapturePromptModelClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def generate_json(self, prompt, context):
+            captured["prompt"] = prompt
+            return navigator.canned_navigator_output(
+                context["intake"],
+                context["rule_results"],
+                context["retrieved_cards"],
+                context["urgency_floor"],
+            )
+
+    monkeypatch.setattr(navigator, "ModelClient", CapturePromptModelClient)
+
+    navigator.run_navigation(
+        confirmed,
+        [],
+        audio_draft=confirmed_audio,
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="unused"),
+        retrieved_cards=[
+            {
+                "card_id": "SAFETY-BOUNDARIES-v1",
+                "card": {"card_id": "SAFETY-BOUNDARIES-v1", "title": "Safety boundaries"},
+            }
+        ],
+    )
+
+    assert "Adult says chest pain from audio only." not in captured["prompt"]
+    assert "chest pain" not in captured["prompt"].lower()
+
+
+def test_apply_audio_draft_prefills_empty_fields_without_confirming() -> None:
+    app = importlib.import_module("app")
+    audio_draft = {
+        "audio_intake_path": "omni_native",
+        "audio_runtime": "omni_native",
+        "transcript": "Adult with chest pain.",
+        "suggested_fields": [
+            {
+                "field": "chief_concern",
+                "draft_value": "chest pain",
+                "source_snippet": "chest pain",
+                "status": "audio_draft",
+                "needs_confirmation": True,
+            }
+        ],
+        "confirmed_intake_required": True,
+        "confirmation_status": "unconfirmed",
+        "raw_audio_stored": False,
+    }
+
+    *fields, audio_json, audio_state = app._apply_audio_draft_ui(
+        "mobile clinic",
+        "52",
+        "not_applicable",
+        "",
+        "",
+        "",
+        "unknown",
+        "unknown",
+        "basic kit",
+        "",
+        audio_draft,
+    )
+
+    assert fields[3] == "chest pain"
+    assert audio_json["confirmation_status"] == "unconfirmed"
+    assert audio_state is audio_json
+
+
 def test_uploaded_audio_without_transcript_or_payload_is_not_fabricated_as_omni() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(
