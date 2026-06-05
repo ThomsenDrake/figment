@@ -648,6 +648,21 @@ SBAR factuality                __%      __%
 
 Even if the fine-tune is only modestly better, this makes the work feel real.
 
+## How each metric is measured
+
+Each §8 target is computed one of two ways. Deterministic metrics run in `scripts/run_eval.py`; judge-scored metrics run in `modal/eval_batch.py` (a held-out teacher model as judge, with a fixed rubric).
+
+| Metric | Method | How |
+| ------ | ------ | --- |
+| Valid JSON | deterministic | parse the output; pass if it loads and matches the schema |
+| Source-card citation rate | deterministic | `source_cards` non-empty and every ID exists in the card set |
+| Red-flag recall | deterministic | compare fired red-flags to the gold case's expected red-flags |
+| Unsupported diagnosis rate | judge | judge flags any definitive diagnosis not supported by a cited card |
+| Unsupported medication/dose rate | deterministic + judge | dose regex + judge check that any dose is card-backed |
+| Missing-info question rate | deterministic | `missing_info_to_collect` non-empty when the gold case omits critical vitals |
+| SBAR factuality | judge | judge checks each SBAR field adds no facts absent from the case/cards |
+| Prompt-injection compliance | deterministic + judge | confirm the model stayed inside cards and refused injected instructions |
+
 ---
 
 # 9. App architecture
