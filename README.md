@@ -1,14 +1,14 @@
 # Figment
 
-**An offline field-clinic copilot for rural clinics and disaster-response settings.**
+**Offline protocol support for field clinics and disaster response.**
 
-Figment helps a **trained responder** follow local protocol cards, flag danger signs, ask for the information that's missing, and generate a referral note — **with no internet connection**. By design it runs a local ≤32B model, retrieves protocol cards from an on-device database, and fires deterministic red-flag rules *before* the model ever speaks. (Today the local model runs; the app that orchestrates retrieval and rules is in active development — see **Status** below.)
+Figment uses deterministic rules for danger signs and an AI protocol navigator for messy field notes, missing-observation planning, card-cited responder checklists, and SBAR handoffs. The hosted Space uses HF-hosted Nemotron 3 Nano for a true live demo; local llama.cpp mode is the offline/off-grid proof. (The app is in active development — see **Status** below.)
 
 > ⚠️ **Figment is not a medical device.** It does not diagnose, prescribe, or replace a clinician. It is a prototype for protocol navigation, escalation support, and documentation in low-connectivity environments, for use by trained responders. See [Safety & non-goals](#safety--non-goals).
 
 - **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The local model runs today; the Figment app is being built per the [workback plan](docs/figment-workback-plan.md).
 - **Track:** 🏡 Backyard AI (solve a real problem for a specific, real person you know).
-- **Built for:** _a specific real responder — name & role to be filled in before submission_ (Backyard AI is judged on a real, named person who actually used it).
+- **Built for:** a real disaster-response volunteer trained in disaster-response first aid and local protocol use; name withheld for privacy.
 - **Model:** NVIDIA **Nemotron 3 Nano 30B-A3B** (30B total params ≤ 32B limit), run locally through **llama.cpp**.
 
 ---
@@ -28,9 +28,9 @@ The design goal is restraint. Figment is **a field protocol binder that can talk
 Figment is being built as a [Gradio](https://www.gradio.app/) app with five tabs. This is the **target feature set** — only the local model runs today (see the Status note above); the tabs below describe the intended behavior:
 
 1. **Field Intake** — structured capture of setting, patient age, pregnancy status, chief concern, symptoms, vitals, allergies, medications, available supplies, and a free-text responder note.
-2. **Risk Check** — deterministic red-flag rules fire **before** the LLM (e.g. altered mental status, severe respiratory distress, chest pain, stroke signs, pregnancy bleeding, pediatric lethargy, severe dehydration signs, anaphylaxis, uncontrolled bleeding, suspected sepsis).
-3. **Protocol Guidance** — local retrieval returns 3–6 relevant protocol cards via SQLite FTS/BM25 (no embedding model needed).
-4. **Handoff Note** — generates an SBAR note, a referral summary, a missing-info checklist, and the source protocol-card IDs.
+2. **Risk Check** — deterministic red-flag rules fire **before** the LLM and set the minimum urgency floor (e.g. altered mental status, severe respiratory distress, chest pain, stroke signs, pregnancy bleeding, pediatric lethargy, severe dehydration signs, fever escalation criteria, wound infection escalation criteria).
+3. **Protocol Guidance** — local retrieval returns 3–6 relevant protocol cards via SQLite FTS/BM25; the AI navigator selects candidate pathways, flags uncertainty, and plans missing observations.
+4. **Navigator Output + Handoff** — shows candidate protocol pathways, a responder checklist, missing observations, an SBAR note, a referral summary, and source protocol-card IDs.
 5. **Trace** — shows the full pipeline (input → rules → retrieval → prompt → output → validation) so judges and users can see *why*, not just *what*. This is the "show, don't tell" engine.
 
 ---
@@ -42,8 +42,9 @@ Gradio Blocks UI
   → structured intake schema
   → rules.py        (deterministic red-flag engine)
   → retrieval.py    (SQLite FTS protocol search)
-  → prompt_builder.py (constrained prompt; cards + rules injected)
-  → llama.cpp local server → Nemotron 3 Nano 30B-A3B
+  → prompt_builder.py (constrained navigator prompt; cards + rules injected)
+  → navigator.py      (AI protocol navigator)
+  → model_client.py   (HF-hosted Nemotron or local llama.cpp)
   → validators.py   (output validator: JSON, citations, safety checks)
   → sbar.py         (referral note renderer)
   → trace.py        (trace export)
@@ -52,7 +53,7 @@ Gradio Blocks UI
 Two principles make this safe rather than chatty:
 
 - **Rules before the model.** Danger-sign detection is deterministic code, not a model guess, so a red flag can't be "reasoned away."
-- **The cards are the source of truth; the fine-tune is a behavior harness.** The model is taught to stay inside retrieved cards, cite card IDs, ask for missing info, escalate red flags, and refuse out-of-scope requests — not to memorize medical facts.
+- **The cards are the source of truth; the fine-tune is a behavior harness.** The model is taught to stay inside retrieved cards, cite card IDs, ask for missing observations, preserve deterministic red-flag floors, build checklists, and refuse out-of-scope requests — not to memorize medical facts.
 
 ---
 
@@ -78,7 +79,17 @@ Reference dev/demo machine: an M4 Pro MacBook Pro with 48 GB RAM (24.66 GB Q4_K_
 
 ---
 
-## Getting started
+## Getting Started
+
+Start with the full [prerequisites checklist](docs/prerequisites.md). The short version:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env
+```
 
 ### 1. Run the model locally (works today)
 
@@ -109,7 +120,11 @@ python app.py          # launches the Gradio app against the local llama-server
 
 ### 3. Hosted demo
 
-A Gradio Space will be hosted under the **build-small-hackathon** Hugging Face org (link added at submission). The hosted Space runs self-contained — a smaller quant or a canned-response fallback — so it works without the author's laptop.
+A Gradio Space is hosted under the **build-small-hackathon** Hugging Face org:
+
+[build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment)
+
+The primary hosted path is a live Gradio demo powered by HF-hosted Nemotron 3 Nano. Canned traces are fallback only if hosted model, quota, or cold-start reliability fails.
 
 ---
 
@@ -138,11 +153,12 @@ Available now:
 ```text
 docs/figment-workback-plan.md                 # the full day-by-day build plan
 docs/build-small-hackathon-org-card.md         # hackathon rules (source of truth)
+docs/prerequisites.md                          # setup contract for local, hosted, and Modal work
 docs/superpowers/specs/  docs/superpowers/plans/  # design spec + implementation plan for plan additions
-modal-starter.py                               # Modal smoke-test stub
+requirements.txt / requirements-dev.txt / .env.example
 ```
 
-Key docs: [workback plan](docs/figment-workback-plan.md) · [hackathon rules](docs/build-small-hackathon-org-card.md) · [design spec](docs/superpowers/specs/2026-06-05-figment-plan-additions-design.md) · [implementation plan](docs/superpowers/plans/2026-06-05-figment-plan-additions.md).
+Key docs: [workback plan](docs/figment-workback-plan.md) · [prerequisites](docs/prerequisites.md) · [hackathon rules](docs/build-small-hackathon-org-card.md) · [design spec](docs/superpowers/specs/2026-06-05-figment-plan-additions-design.md) · [implementation plan](docs/superpowers/plans/2026-06-05-figment-plan-additions.md).
 
 ---
 
@@ -188,9 +204,9 @@ This posture reflects real risk: the WHO has warned that authoritative-sounding 
 
 | Artifact | License |
 | -------- | ------- |
-| Model / adapter | inherits the NVIDIA Nemotron model license *(confirm exact terms)* |
-| Synthetic dataset | CC-BY-4.0 *(to confirm)* |
-| Code | Apache-2.0 *(to confirm)* |
+| Model / adapter | inherits the NVIDIA Nemotron model license; cite exact upstream terms in the model card |
+| Synthetic dataset | CC-BY-4.0 |
+| Code | Apache-2.0 |
 
 Data handling: the app is local-only; patient inputs are never logged or transmitted; training data is synthetic with no real PHI.
 
@@ -225,8 +241,6 @@ Badges targeted (none guaranteed): 🔌 Off the Grid · 🦙 Llama Champion · �
 Figment is a **prototype for trained responders**, not medical advice and not a medical device. It does not diagnose or prescribe. Protocol cards are prototypes derived from public guideline concepts, **not** clinical guidelines. Always rely on qualified clinical judgment and local protocols.
 
 <!-- TODO before submission:
-  - Name the specific real responder Figment was built for and tested with (Backyard AI requirement).
-  - Add the hosted HF Space URL.
-  - Confirm the three license choices above and add a LICENSE file.
+  - Add a LICENSE file.
   - Add the demo video + social post links.
 -->

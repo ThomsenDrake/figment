@@ -250,6 +250,7 @@ figment/
   app.py
   README.md
   requirements.txt
+  requirements-dev.txt
   Dockerfile
   Makefile
   .env.example
@@ -316,6 +317,7 @@ figment/
 
   docs/
     field_notes.md
+    prerequisites.md
     user_test_notes.md
     model_card.md
     dataset_card.md
@@ -1103,7 +1105,7 @@ Create the medical guardrail layer.
 
 * Write 10 protocol cards.
 * Write red-flag YAML rules.
-* Reconcile the red-flag rule set with the 10 cards: every red-flag condition must have a backing card (add anaphylaxis / uncontrolled-bleeding / sepsis cards, or scope v1 rules to carded conditions only) so the validator's "all cited cards exist" check can pass.
+* Reconcile the red-flag rule set with the 10 cards: every v1 red-flag condition must have a backing card, and v1 rules should stay scoped to carded conditions so the validator's "all cited cards exist" check can pass.
 * Implement rules engine.
 * Implement SQLite FTS retrieval.
 * Implement `config.py` (canonical model IDs + paths), `prompt_builder.py` (assemble the §9 constrained prompt skeleton), and `navigator.py` (AI protocol-navigator orchestration).
