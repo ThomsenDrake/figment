@@ -1297,6 +1297,31 @@ Built for the Build Small Hackathon, Figment runs NVIDIA Nemotron 3 Nano 30B-A3B
 
 The winning move is to make Figment feel humble, specific, and useful. Not “AI doctor.” More like: **a field protocol binder that can talk, cite itself, and knows when to shut up.**
 
+---
+
+# 16. Operational readiness
+
+## Risk register
+
+| Risk | Trigger (how you know) | Fallback | Owner-day |
+| ---- | ---------------------- | -------- | --------- |
+| Modal 30B LoRA job fails or OOMs | Job errors, or needs > 80 GB VRAM | Ship the pilot/4B adapter or base GGUF (minimum tier, §12); reallocate the day to hardening | June 10 |
+| Model too slow for a live demo | First-token or tok/s below the §2 performance budget | Step down the §2 degradation ladder: 16k→8k ctx → smaller quant → canned-response mode | June 11 |
+| Synthetic critique keep-rate too low | < ~40% kept after critique + validate | Lower the target to 2,000 examples; invest more in cards/rules; accept a smaller train set | June 8 |
+| HF Space won't cold-boot | Space build/log errors on a clean start | Ship the smaller-quant or canned-response Space (still a valid mandatory artifact); fix requirements/Dockerfile | June 12 |
+| Fine-tune regresses safety | Any June 10 kill criterion trips (recall down, unsafe diagnosis up, JSON breaks, stops citing, over-refusal) | Roll back to base or the prior checkpoint; publish base as the demo model | June 10 |
+| No real user available by June 13 | No responder confirmed | Use a medically literate proxy on simulated cases and say so honestly (honest-fit); keep recruiting | June 13 |
+
+## Testing & CI
+
+Unit-test the safety-critical deterministic components (they must be boringly correct):
+
+* `rules.py` — each red-flag condition fires on a gold positive input and stays silent on a gold negative.
+* `validators.py` — rejects invalid JSON, empty `source_cards`, citations to non-existent cards, forbidden phrases, and risk-level/red-flag inconsistency.
+* `schemas.py` — enum fields (`risk_level`) reject out-of-vocabulary values.
+
+Use small gold fixtures under `tests/`; run with `pytest`. "Do unit tests pass?" is part of the §13 daily checklist. Owner-days: June 6 (scaffold tests with the skeleton), June 7 (rules/validators tests once those modules exist).
+
 [1]: https://huggingface.co/build-small-hackathon?utm_source=chatgpt.com "Build Small Hackathon"
 [2]: https://www.who.int/news/item/18-01-2024-who-releases-ai-ethics-and-governance-guidance-for-large-multi-modal-models?utm_source=chatgpt.com "WHO releases AI ethics and governance guidance for ..."
 [3]: https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software?utm_source=chatgpt.com "Clinical Decision Support Software - Guidance"
