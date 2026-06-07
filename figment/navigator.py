@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from typing import Any
 
 from .config import FigmentConfig, load_config
+from .field_provenance import (
+    accepted_raw_fields_from_failures,
+    deterministic_field_provenance,
+    has_deterministic_patches,
+    merge_field_provenance,
+    model_raw_field_provenance,
+)
+from .focused_repair import build_focused_repair_prompts
 from .model_client import ModelClient, ModelClientError, canned_navigator_output
 from .prompt_builder import build_prompt
 from .retrieval import known_card_ids, query_from_intake, search_protocol_cards
 from .trace import FigmentTrace, scrub_audio_metadata, stable_hash, write_trace
 from .validators import urgency_floor_from_rules, validate_audio_ready, validate_confirmed_intake, validate_navigator_output
+
+
+MAX_FOCUSED_REPAIR_ATTEMPTS = 2
 
 
 def run_navigation(
@@ -39,6 +51,8 @@ def run_navigation(
     client = ModelClient(config)
     events = ["input captured", "rules evaluated", "cards retrieved", "navigator output generated"]
     fallback_reason: str | None = None
+    field_provenance: dict[str, str] = {}
+    repair_metrics: dict[str, Any] = _empty_repair_metrics()
     try:
         output = client.generate_json(
             prompt,
@@ -52,6 +66,7 @@ def run_navigation(
     except ModelClientError:
         output = canned_navigator_output(intake, rule_results, retrieved, floor)
         fallback_reason = "model_backend_error"
+        field_provenance = deterministic_field_provenance()
         events.append("model backend failed; deterministic fallback applied")
 
     card_ids = known_card_ids()
@@ -62,41 +77,35 @@ def run_navigation(
             if item.get("card_id") or item.get("card", {}).get("card_id")
         }
         card_ids.update(str(card_id) for card_id in output.get("source_cards", []))
-    validation = validate_navigator_output(output, card_ids, floor, confirmed_intake=intake, rule_results=rule_results)
+    validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
+    if validation.passed and not field_provenance:
+        field_provenance = (
+            deterministic_field_provenance() if config.model_backend == "canned" else model_raw_field_provenance()
+        )
     if not validation.passed and fallback_reason is None and config.model_backend != "canned":
-        try:
-            retry_output = client.generate_json(
-                _repair_prompt(prompt, output, validation.failures, floor),
-                {
-                    "intake": intake,
-                    "rule_results": rule_results,
-                    "retrieved_cards": retrieved,
-                    "urgency_floor": floor,
-                    "previous_output": output,
-                    "validation_failures": validation.failures,
-                },
-            )
-            retry_validation = validate_navigator_output(
-                retry_output,
-                card_ids,
-                floor,
-                confirmed_intake=intake,
-                rule_results=rule_results,
-            )
-            if retry_validation.passed:
-                output = retry_output
-                validation = retry_validation
-                events.append("navigator output repaired by hosted retry")
-            else:
-                events.append("navigator retry failed validation")
-        except ModelClientError:
-            events.append("navigator retry failed")
+        field_result = _try_field_level_model_output(
+            client=client,
+            prompt=prompt,
+            raw_output=output,
+            validation_failures=validation.failures,
+            floor=floor,
+            intake=intake,
+            rule_results=rule_results,
+            retrieved=retrieved,
+            known_cards=card_ids,
+            events=events,
+            repair_metrics=repair_metrics,
+        )
+        if field_result is not None:
+            output, validation, field_provenance = field_result
     if not validation.passed:
         output = canned_navigator_output(intake, rule_results, retrieved, floor)
-        validation = validate_navigator_output(output, card_ids, floor, confirmed_intake=intake, rule_results=rule_results)
+        validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
         fallback_reason = fallback_reason or "navigator_validation_failure"
+        field_provenance = deterministic_field_provenance()
         events.append("navigator output failed validation; deterministic fallback applied")
     events.append("validation complete")
+    field_level_fallback_used = has_deterministic_patches(field_provenance)
     trace = FigmentTrace(
         input_captured={
             "structured_intake": intake,
@@ -112,15 +121,133 @@ def run_navigation(
             "model_id": config.active_model_id,
             "fallback_tier": "canned" if config.model_backend == "canned" or fallback_reason else "configured",
             "fallback_reason": fallback_reason,
+            "field_level_fallback_used": field_level_fallback_used,
+            "strict_validation": True,
+            **repair_metrics,
         },
         navigator_output=output,
         validator_result=validation.to_dict(),
+        field_provenance=field_provenance,
         raw_audio_stored=False,
         events=events,
     )
     if trace_path:
         write_trace(trace, trace_path)
     return output, trace
+
+
+def _validate_output(
+    output: dict[str, Any],
+    card_ids: set[str],
+    floor: str,
+    intake: dict[str, Any],
+    rule_results: list[dict[str, Any]],
+    retrieved: list[dict[str, Any]],
+):
+    retrieved_ids = {
+        str(item.get("card_id") or item.get("card", {}).get("card_id"))
+        for item in retrieved
+        if item.get("card_id") or item.get("card", {}).get("card_id")
+    }
+    return validate_navigator_output(
+        output,
+        card_ids,
+        floor,
+        confirmed_intake=intake,
+        rule_results=rule_results,
+        retrieved_card_ids=retrieved_ids,
+        retrieved_cards=retrieved,
+        strict_schema=True,
+    )
+
+
+def _try_field_level_model_output(
+    *,
+    client: ModelClient,
+    prompt: str,
+    raw_output: dict[str, Any],
+    validation_failures: list[str],
+    floor: str,
+    intake: dict[str, Any],
+    rule_results: list[dict[str, Any]],
+    retrieved: list[dict[str, Any]],
+    known_cards: set[str],
+    events: list[str],
+    repair_metrics: dict[str, Any],
+) -> tuple[dict[str, Any], Any, dict[str, str]] | None:
+    fallback_output = canned_navigator_output(intake, rule_results, retrieved, floor)
+    accepted_raw_fields = accepted_raw_fields_from_failures(validation_failures)
+    repair_context = {
+        "intake": intake,
+        "rule_results": rule_results,
+        "retrieved_cards": retrieved,
+        "urgency_floor": floor,
+        "previous_output": raw_output,
+        "validation_failures": validation_failures,
+    }
+    repaired_fields: dict[str, Any] = {}
+    focused_prompts = build_focused_repair_prompts(
+        original_prompt=prompt,
+        previous_output=raw_output,
+        failures=validation_failures,
+        urgency_floor=floor,
+    )
+    repair_metrics["repair_scope_count"] = len(focused_prompts)
+    repair_metrics["repair_scopes"] = [focused_prompt.scope.name for focused_prompt in focused_prompts]
+    repair_metrics["repair_capped"] = len(focused_prompts) > MAX_FOCUSED_REPAIR_ATTEMPTS
+    for focused_prompt in focused_prompts[:MAX_FOCUSED_REPAIR_ATTEMPTS]:
+        repair_metrics["repair_attempt_count"] += 1
+        started = perf_counter()
+        try:
+            repair_output = client.generate_json(focused_prompt.prompt, repair_context | {"repair_scope": focused_prompt.scope.name})
+        except ModelClientError:
+            repair_metrics["repair_latency_ms"] = round(
+                repair_metrics["repair_latency_ms"] + ((perf_counter() - started) * 1000),
+                3,
+            )
+            events.append(f"navigator focused repair failed for {focused_prompt.scope.name}")
+            continue
+        repair_metrics["repair_latency_ms"] = round(
+            repair_metrics["repair_latency_ms"] + ((perf_counter() - started) * 1000),
+            3,
+        )
+        if not isinstance(repair_output, dict):
+            events.append(f"navigator focused repair for {focused_prompt.scope.name} returned non-object output")
+            continue
+        for field in focused_prompt.scope.fields:
+            if field in repair_output:
+                repaired_fields[field] = repair_output[field]
+
+    merge_candidates = []
+    if repaired_fields:
+        merge_candidates.append((repaired_fields, "navigator output repaired by hosted retry"))
+    merge_candidates.append(({}, "navigator output retained with field-level deterministic patches"))
+    for candidate_repaired_fields, event_text in merge_candidates:
+        merge_result = merge_field_provenance(
+            raw_output,
+            candidate_repaired_fields,
+            fallback_output,
+            accepted_raw_fields=accepted_raw_fields,
+        )
+        merged_validation = _validate_output(merge_result.output, known_cards, floor, intake, rule_results, retrieved)
+        if merged_validation.passed:
+            if merge_result.provenance == deterministic_field_provenance():
+                continue
+            events.append(event_text)
+            return merge_result.output, merged_validation, merge_result.provenance
+    events.append("navigator retry failed validation")
+    return None
+
+
+def _empty_repair_metrics() -> dict[str, Any]:
+    return {
+        "repair_attempt_count": 0,
+        "repair_attempt_cap": MAX_FOCUSED_REPAIR_ATTEMPTS,
+        "repair_scope_count": 0,
+        "repair_capped": False,
+        "repair_latency_ms": 0.0,
+        "repair_scopes": [],
+    }
 
 
 def _repair_prompt(

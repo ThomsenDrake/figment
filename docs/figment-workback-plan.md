@@ -12,7 +12,7 @@ The hackathon target:
 
 > Ship a polished Gradio Space by **June 15**, with a hosted Nemotron Omni-powered app, a local/offline Nemotron 3 Nano 4B + Parakeet path, an open synthetic dataset if time allows, demo traces, and a field-notes writeup. Fine-tuning should target the smaller 4B local model first; Omni fine-tuning is deferred unless the runtime demo, safety validation, local/offline proof, and 4B adapter story are already green.
 
-Architecture note: **Nemotron Omni remains the hosted v1 default and submission demo story**. The on-device/off-grid target is now **NVIDIA Nemotron 3 Nano 4B BF16** for text navigation and fine-tuning, paired with **Parakeet RNNT 1.1B** for offline ASR. The old 30B text-plus-Parakeet split is no longer the preferred local path.
+Architecture note: **Nemotron Omni remains the hosted v1 default and submission demo story**. The local/off-grid target is now **NVIDIA Nemotron 3 Nano 4B BF16** for text navigation and fine-tuning, paired with **Parakeet RNNT 1.1B** for offline ASR. The old 30B text-plus-Parakeet split is no longer the preferred local path.
 
 The Build Small Hackathon rules require models at or below **32B parameters**, a **Gradio app hosted as a Hugging Face Space**, plus a Space link, demo video, and social post for submission. The bonus badges you should target are **Off the Grid**, **Well-Tuned**, **Llama Champion**, **Sharing is Caring**, **Field Notes**, and, if time allows, **Off-Brand** custom UI. ([Hugging Face][1])
 
@@ -101,7 +101,7 @@ Draft on June 5, finalize June 14. Required elements:
 
 # 2. Hardware and runtime plan
 
-Hosted Omni is a clean demo story but a harder on-device runtime story. Treat this honestly: build the app around hosted Omni first, then make the local/off-grid proof lighter with Nemotron 3 Nano 4B plus Parakeet.
+Hosted Omni is a clean demo story but a harder local runtime story. Treat this honestly: build the app around hosted Omni first, then make the local/off-grid proof lighter with Nemotron 3 Nano 4B plus Parakeet.
 
 Official Omni weight/runtime facts:
 
@@ -124,7 +124,7 @@ The 4B model is text-only, so it does not replace hosted Omni's native audio/mul
 
 Use:
 
-* **NVIDIA-Nemotron-3-Nano-4B-BF16** as the on-device text-navigation and fine-tuning target
+* **NVIDIA-Nemotron-3-Nano-4B-BF16** as the local text-navigation and fine-tuning target
 * **Parakeet RNNT 1.1B** as the offline ASR target
 * **16k context** for normal usage, despite the model card's much longer maximum context
 * **8k context** fallback if latency or memory gets weird
@@ -324,7 +324,7 @@ Deliberate scope boundaries, stated up front so judges and users know exactly wh
 * It will **not prescribe or dose medication** — drug doses appear only if a cited protocol card contains them.
 * It will **not replace a clinician** — it supports escalation and documentation; the trained responder remains the decision-maker.
 * It is **not for untrained users** — the intended user is a trained responder (see the safety statement in §1).
-* It does **not store PHI** — local/offline mode keeps patient inputs on-device, hosted demo mode uses synthetic/de-identified inputs only, and published traces never include raw audio (see §5).
+* It does **not store PHI** — local/offline mode keeps patient inputs on the local machine, hosted demo mode uses synthetic/de-identified inputs only, and published traces never include raw audio (see §5).
 * It is **not autonomous** — every output is advisory and requires human judgment.
 * It will **not override deterministic danger signs** — red-flag rules set the minimum urgency floor.
 * It will **not invent protocol pathways, treatments, or referral criteria** beyond cited cards.
@@ -561,7 +561,7 @@ Offline ASR:     Parakeet RNNT is CC-BY-4.0; include attribution if the local AS
 
 Data handling:
 
-* Local/offline mode processes patient inputs on-device.
+* Local/offline mode processes patient inputs locally.
 * Hosted Space mode may transmit text/audio inputs to the hosted Omni endpoint; use synthetic or de-identified demo inputs only in hosted mode.
 * Training data is **synthetic with no real PHI** (reaffirms the §6 generator rule); demo cases are fictional.
 * Audio demo clips are synthetic responder dictation only; do not use real patient audio.
@@ -1474,14 +1474,14 @@ docs/safety_statement.md draft
 
 # 11. Badge plan
 
-| Badge                 | Plan                                                                 | Risk   |
-| --------------------- | -------------------------------------------------------------------- | ------ |
-| **Off the Grid**      | Local mode has no runtime cloud APIs: local Nemotron 3 Nano 4B text navigator, local retrieval, local rules, and Parakeet ASR if proven. Hosted Omni audio/text mode must be labeled separately and does not count toward this badge. | Medium |
-| **Well-Tuned**        | Publish Figment LoRA/adapter targeting Nemotron 3 Nano 4B **and demo the app running it**. This is much more realistic than an Omni adapter; drop the badge only if adapter quality/tooling threatens safety. | Medium |
-| **Llama Champion**    | Run the 4B local model through llama.cpp or another accepted local runtime after verification. If the badge specifically requires llama.cpp, do not claim it until a compatible 4B quant runs locally. | Medium |
-| **Sharing is Caring** | Publish trace JSONs on Hub.                                          | Low    |
+| Badge                 | Evidence-gated plan                                                   | Risk   |
+| --------------------- | --------------------------------------------------------------------- | ------ |
+| **Off the Grid**      | Target only until a recorded no-cloud run exists. Local mode can support the claim with local Nemotron 3 Nano 4B text navigation, local retrieval, local rules, and Parakeet ASR if proven. Hosted Omni audio/text mode must be labeled separately and does not count toward this badge. | Medium |
+| **Well-Tuned**        | Target only until a published Figment LoRA/adapter is used by the app and measured. Prefer Nemotron 3 Nano 4B; drop the badge if adapter quality/tooling threatens safety. | Medium |
+| **Llama Champion**    | Target only until an eligible local model route runs through llama.cpp with trace or eval evidence. If the badge specifically requires llama.cpp, do not claim it until a compatible 4B quant runs locally. | Medium |
+| **Sharing is Caring** | Target only until trace JSONs are published on Hub with final links.   | Low    |
 | **Field Notes**       | Write build report with eval table. Org card marks this **_(Tentative)_** — may not be awarded; pursue for the writeup's own value, don't bank the points. | Low    |
-| **Off-Brand**         | Custom Gradio Blocks CSS.                                            | Medium |
+| **Off-Brand**         | Target only until the final demo or social artifact shows custom UI that meets organizer criteria. | Medium |
 
 Priority order:
 
@@ -1658,12 +1658,12 @@ A timestamped beat sheet for the submission video. It must show the **hosted Spa
 
 ```text
 0:00  Cold open — "What happens when the clinic loses internet?" Cut the network.
-0:15  Show the live Space link running hosted Omni mode; then show local/offline mode as the off-grid proof.
+0:15  Show the live Space link only after public cold boot is verified; otherwise label the Space as targeted and show local evidence separately.
 0:30  Case 1 (pediatric dehydration): dictate synthetic intake → Omni drafts fields → medic corrects one field → confirm intake.
 0:55  Same case: protocol pathway → red-flag fires → missing observations + checklist → SBAR.
 1:30  Open the Trace tab (§3, the 5th tab): show deterministic rules plus AI protocol navigation end to end.
-2:00  One line + the before/after table (base vs Figment LoRA) from §8.
-2:30  Close on the real-user anchor: disaster-response volunteer trained in disaster-response first aid and local protocol use, name withheld for privacy.
+2:00  Show the current eval scorecard: hosted model competence, field retention, deterministic patches, fallback, and final validation. Use a LoRA before/after table only if an adapter exists and is measured.
+2:30  Close on the real-user anchor: built for a disaster-response volunteer trained in disaster-response first aid and local protocol use, name withheld for privacy. Say they used or tested Figment only if user-test notes exist.
 ```
 
 Keep it under 3:00. Record a rough cut before June 14 so a failed take never threatens submission.
@@ -1677,7 +1677,7 @@ Use this as the README opener:
 ```text
 Figment is offline protocol support for field clinics and disaster response.
 
-It runs NVIDIA Nemotron 3 Nano Omni as a <=32B multimodal protocol navigator: deterministic rules flag danger signs, while the AI turns dictated or typed field notes into confirmed structured facts, candidate protocol pathways, missing-information plans, uncertainty notes, card-cited responder checklists, and SBAR referral handoffs. It was built for and tested with a real disaster-response volunteer trained in disaster-response first aid and local protocol use; their name is withheld for privacy.
+It uses NVIDIA Nemotron 3 Nano Omni as the hosted v1 multimodal protocol navigator: deterministic rules flag danger signs, while the AI turns dictated or typed field notes into confirmed structured facts, candidate protocol pathways, missing-information plans, uncertainty notes, card-cited responder checklists, and SBAR referral handoffs. It is built for a real disaster-response volunteer trained in disaster-response first aid and local protocol use; their name is withheld for privacy. Add "tested with" only after factual user-test notes exist.
 
 Figment is not intended for diagnosis, treatment, prescribing, patient triage, or autonomous clinical decision support. It is a prototype for protocol navigation, protocol-defined escalation cues, and documentation in low-connectivity environments.
 ```
@@ -1687,9 +1687,9 @@ And use this as the social/demo hook:
 ```text
 What happens when the clinic loses internet?
 
-Figment keeps working.
+Figment is built for that moment.
 
-Built for the Build Small Hackathon, Figment runs NVIDIA Nemotron 3 Nano Omni as a single <=32B multimodal model for audio-assisted intake and protocol navigation. Deterministic rules flag danger signs; the AI drafts intake fields for medic confirmation, navigates protocol cards, marks uncertainty, asks for missing observations, builds card-cited responder checklists, and drafts SBAR handoffs for field clinics and disaster response.
+Built for the Build Small Hackathon, Figment uses hosted NVIDIA Nemotron 3 Nano Omni for the public demo path and keeps a separate local/off-grid proof path gated behind recorded evidence. Deterministic rules flag danger signs; the AI drafts intake fields for medic confirmation, navigates protocol cards, marks uncertainty, asks for missing observations, builds card-cited responder checklists, and drafts SBAR handoffs for field clinics and disaster response.
 ```
 
 If the 4B + Parakeet local path is demo-visible, do not use the "single multimodal model" sentence for that segment. Label it separately as the offline/local path, and keep the primary hosted hook Omni-first.

@@ -1,0 +1,56 @@
+# Local Parakeet ASR evidence
+
+Date: 2026-06-07
+
+This note separates local Parakeet ASR artifact availability from a real local ASR proof. Artifact availability is not proof that the app has used Parakeet audio or that the local/off-grid audio path is ready.
+
+## Artifact status
+
+- Model repo: `nvidia/parakeet-rnnt-1.1b`
+- Revision: `a07b19e98a26c1873a3f2622c446a4a1ca6316cb`
+- Local snapshot path: `/Users/drake.thomsen/.cache/huggingface/hub/models--nvidia--parakeet-rnnt-1.1b/snapshots/a07b19e98a26c1873a3f2622c446a4a1ca6316cb`
+- Local artifact: `parakeet-rnnt-1.1b.nemo`
+- Artifact size: `4283105280` bytes
+- Artifact SHA-256: `535896f014953d945b287ac533560e20da8103c6781b152de4645528e2b60738`
+
+## Evidence helper
+
+Use the helper to capture local ASR evidence:
+
+```bash
+PYTHON_DOTENV_DISABLED=true \
+python3 scripts/run_local_asr_evidence.py \
+  --provider-payload <local-parakeet-provider-output.json> \
+  --audio <optional-source-audio.wav> \
+  --provider-note "<device/runtime command>"
+```
+
+The helper writes a timestamped evidence directory under `traces/local_asr_parakeet_evidence_*`:
+
+- `artifact_metadata.json`: Parakeet `.nemo` presence, size, and hash
+- `audio_metadata.json`: optional source-audio metadata and hash only; raw audio is not copied into the evidence bundle
+- `provider_payload_metadata.json`: provider output file hash
+- `audio_draft.json`: Figment draft generated from the provider payload under `AUDIO_BACKEND=parakeet_nemo` and `ALLOW_LOCAL_ASR=true`
+- `draft_checks.json`: evidence-gated checks for Parakeet provenance, confirmation status, and raw-audio handling
+- `asr_evidence_manifest.json`: compact manifest with artifact status, provider-payload hash, configured route, draft summary, raw-audio handling, and proof flags
+- `summary.json`: top-level proof flags
+
+Exit codes are evidence-gated:
+
+- `0`: provider payload passed all local ASR draft checks
+- `2`: artifact exists but provider payload is missing or not proof
+- `1`: artifact missing
+
+## Current result
+
+The artifact-only helper run succeeded in finding the Parakeet `.nemo` file but exited `2` because no real local ASR provider payload was supplied:
+
+```text
+status=artifact_present_provider_payload_required
+counts_as_local_asr_artifact=true
+counts_as_local_asr_proof=false
+raw_audio_stored=false
+asr_evidence_manifest_path=/tmp/figment-local-asr-artifact-only-manifest-check/asr_evidence_manifest.json
+```
+
+This means Parakeet remains not demo-visible as local ASR proof. It can become proof only after a real local ASR adapter or device runtime produces a provider payload, and the helper records `counts_as_local_asr_proof=true`.

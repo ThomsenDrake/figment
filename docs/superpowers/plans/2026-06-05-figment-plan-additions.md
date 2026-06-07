@@ -232,7 +232,7 @@ Code:    Apache-2.0   [confirm]
 
 Data handling:
 
-* The app is **local-only** — patient inputs are processed on-device.
+* The app is **local-only** — patient inputs are processed locally.
 * Patient inputs are **never logged or transmitted** off-device.
 * Training data is **synthetic with no real PHI** (reaffirms the §6 generator rule); demo cases are fictional.
 

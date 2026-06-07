@@ -5,8 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
 from pathlib import Path
+import re
+import urllib.error
+import urllib.parse
 import urllib.request
+import wave
 from typing import Any
 
 from .config import FigmentConfig, load_config
@@ -18,6 +23,8 @@ class ModelClientError(RuntimeError):
 
 NVIDIA_HOSTED_MAX_TOKENS = 8192
 DEFAULT_MAX_TOKENS = 4096
+DEFAULT_TIMEOUT_SECONDS = 45.0
+MODEL_TIMEOUT_ENV = "FIGMENT_MODEL_TIMEOUT_SECONDS"
 
 AUDIO_DRAFT_PROMPT = """Transcribe this responder audio and return ONLY JSON with:
 {
@@ -31,6 +38,9 @@ AUDIO_DRAFT_PROMPT = """Transcribe this responder audio and return ONLY JSON wit
 Allowed field names are: setting, patient_age, pregnancy_status, chief_concern, symptoms, vitals, allergies, medications, available_supplies, responder_note.
 Each suggested_fields item must use exactly one allowed field name, not a pipe-delimited list.
 The output is a provisional intake draft for a trained responder. Do not diagnose, prescribe, or decide urgency. Do not include raw audio data."""
+
+HOSTED_AUDIO_MAX_BYTES = 10 * 1024 * 1024
+HOSTED_AUDIO_MAX_SECONDS = 60.0
 
 
 def canned_navigator_output(
@@ -88,9 +98,9 @@ def canned_navigator_output(
 
 
 class ModelClient:
-    def __init__(self, config: FigmentConfig | None = None, timeout_seconds: float = 45.0):
+    def __init__(self, config: FigmentConfig | None = None, timeout_seconds: float | None = None):
         self.config = (config or load_config()).validated()
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else _timeout_seconds_from_env()
 
     def generate_json(self, prompt: str, context: dict[str, Any]) -> dict[str, Any]:
         if self.config.model_backend == "canned":
@@ -124,6 +134,7 @@ class ModelClient:
     def generate_audio_draft(self, audio_path: str | Path) -> dict[str, Any]:
         if self.config.model_backend != "hosted_omni":
             raise ModelClientError("hosted Omni audio drafting requires MODEL_BACKEND=hosted_omni")
+        validate_hosted_audio_file(audio_path)
         endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url or self.config.nvidia_base_url
         if not endpoint:
             raise ModelClientError("hosted Omni audio drafting requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
@@ -171,9 +182,7 @@ class ModelClient:
         auth_headers: dict[str, str],
         include_nvidia_options: bool = False,
     ) -> dict[str, Any]:
-        url = base_url.rstrip("/")
-        if not url.endswith("/chat/completions"):
-            url = f"{url}/chat/completions"
+        url = _openai_chat_url(base_url)
         body = {
             "model": model_id,
             "messages": messages,
@@ -194,8 +203,10 @@ class ModelClient:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-        except (OSError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ModelClientError(f"model backend failed: {exc}") from exc
+        except urllib.error.HTTPError as exc:
+            raise ModelClientError(_backend_error_message(exc, url, model_id, self.timeout_seconds)) from exc
+        except (urllib.error.URLError, OSError, TimeoutError, json.JSONDecodeError) as exc:
+            raise ModelClientError(_backend_error_message(exc, url, model_id, self.timeout_seconds)) from exc
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices:
             raise ModelClientError("model response did not include choices")
@@ -209,7 +220,7 @@ class ModelClient:
         try:
             return _parse_json_object(content)
         except json.JSONDecodeError as exc:
-            raise ModelClientError("model response was not valid JSON") from exc
+            raise ModelClientError(f"model response for {model_id} was not valid JSON") from exc
 
     def _hosted_auth_headers(self, endpoint: str) -> dict[str, str]:
         if "integrate.api.nvidia.com" in endpoint:
@@ -219,6 +230,57 @@ class ModelClient:
         if self.config.hf_token:
             return {"Authorization": f"Bearer {self.config.hf_token}"}
         return {}
+
+
+def _timeout_seconds_from_env() -> float:
+    raw_value = os.getenv(MODEL_TIMEOUT_ENV, "").strip()
+    if not raw_value:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw_value)
+    except ValueError as exc:
+        raise ModelClientError(f"{MODEL_TIMEOUT_ENV} must be a number of seconds") from exc
+    if timeout <= 0:
+        raise ModelClientError(f"{MODEL_TIMEOUT_ENV} must be greater than 0")
+    return timeout
+
+
+def _openai_chat_url(base_url: str) -> str:
+    parts = urllib.parse.urlsplit(base_url.strip())
+    path = parts.path.rstrip("/")
+    if not path.endswith("/chat/completions"):
+        path = f"{path}/chat/completions" if path else "/chat/completions"
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _backend_error_message(exc: BaseException, url: str, model_id: str, timeout_seconds: float) -> str:
+    details = [
+        "model backend failed",
+        f"model={model_id}",
+        f"url={_safe_url_for_error(url)}",
+        f"timeout={timeout_seconds:g}s",
+    ]
+    if isinstance(exc, urllib.error.HTTPError):
+        details.append(f"http_status={exc.code}")
+        if exc.reason:
+            details.append(f"reason={_safe_error_text(exc.reason)}")
+    elif isinstance(exc, urllib.error.URLError) and exc.reason:
+        details.append(f"reason={_safe_error_text(exc.reason)}")
+    else:
+        details.append(f"error={_safe_error_text(exc)}")
+    return "; ".join(details)
+
+
+def _safe_url_for_error(url: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def _safe_error_text(value: Any) -> str:
+    text = str(value).replace("\n", " ").strip()
+    text = re.sub(r"(?i)\b(token|api_key|key|authorization)=([^&\s]+)", r"\1=[redacted]", text)
+    text = re.sub(r"(?i)\bbearer\s+[^\s]+", "Bearer [redacted]", text)
+    return text[:240]
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:
@@ -271,8 +333,48 @@ def _message_part_text(part: dict[str, Any]) -> str:
     return ""
 
 
+def validate_hosted_audio_file(audio_path: str | Path) -> dict[str, Any]:
+    path = Path(audio_path)
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        raise ModelClientError(f"could not read audio file for hosted Omni draft: {exc}") from exc
+    if stat.st_size > HOSTED_AUDIO_MAX_BYTES:
+        raise ModelClientError(
+            f"audio file exceeds hosted audio size limit ({_format_bytes(HOSTED_AUDIO_MAX_BYTES)}): {stat.st_size} bytes"
+        )
+    duration_seconds = _wav_duration_seconds(path)
+    if duration_seconds is not None and duration_seconds > HOSTED_AUDIO_MAX_SECONDS:
+        raise ModelClientError(
+            f"audio file exceeds hosted audio duration limit ({HOSTED_AUDIO_MAX_SECONDS:g} seconds): {duration_seconds:.1f} seconds"
+        )
+    return {"size_bytes": stat.st_size, "duration_seconds": duration_seconds}
+
+
+def hosted_audio_limits_text() -> str:
+    return f"{_format_bytes(HOSTED_AUDIO_MAX_BYTES)} / {HOSTED_AUDIO_MAX_SECONDS:g} seconds"
+
+
+def _wav_duration_seconds(path: Path) -> float | None:
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            frame_rate = wav_file.getframerate()
+            if frame_rate <= 0:
+                return None
+            return wav_file.getnframes() / frame_rate
+    except (EOFError, OSError, wave.Error):
+        return None
+
+
+def _format_bytes(value: int) -> str:
+    if value % (1024 * 1024) == 0:
+        return f"{value // (1024 * 1024)} MB"
+    return f"{value} bytes"
+
+
 def _audio_file_data_url(audio_path: str | Path) -> str:
     path = Path(audio_path)
+    validate_hosted_audio_file(path)
     try:
         audio_bytes = path.read_bytes()
     except OSError as exc:

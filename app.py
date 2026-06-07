@@ -9,12 +9,12 @@ from typing import Any
 from figment.audio_intake import confirm_audio_draft as _confirm_audio_draft
 from figment.audio_intake import draft_audio_intake as _draft_audio_intake
 from figment.config import FigmentConfig, load_config
-from figment.model_client import ModelClient, ModelClientError
+from figment.model_client import ModelClient, ModelClientError, hosted_audio_limits_text, validate_hosted_audio_file
 from figment.navigator import run_navigation
-from figment.retrieval import load_protocol_cards, query_from_intake, search_protocol_cards
+from figment.retrieval import load_protocol_cards, query_from_intake, retrieval_source_summary, search_protocol_cards
 from figment.rules import evaluate_rules, run_red_flag_checks
 from figment.sbar import render_sbar
-from figment.trace import stable_hash, write_trace
+from figment.trace import normalize_trace_payload, runtime_route_label, stable_hash, write_trace
 from figment.ui_theme import FIGMENT_CSS
 from figment.validators import urgency_floor_from_rules, validate_audio_ready
 
@@ -132,9 +132,14 @@ def draft_audio_intake(
     provider_error = None
     if audio_file and not transcript.strip() and provider_payload is None and _should_use_hosted_omni_audio(config):
         try:
-            provider_payload = ModelClient(config).generate_audio_draft(audio_file)
+            validate_hosted_audio_file(audio_file)
         except ModelClientError as exc:
-            provider_error = f"Hosted Omni audio draft failed; typed transcript or canned fallback required. {exc}"
+            provider_error = f"Hosted Omni audio draft skipped; typed transcript or canned fallback required. {exc}"
+        else:
+            try:
+                provider_payload = ModelClient(config).generate_audio_draft(audio_file)
+            except ModelClientError as exc:
+                provider_error = f"Hosted Omni audio draft failed; typed transcript or canned fallback required. {exc}"
     draft = _draft_audio_intake(
         transcript=transcript,
         config=config,
@@ -145,10 +150,15 @@ def draft_audio_intake(
         draft["audio_file_received"] = True
         draft["audio_filename"] = Path(audio_file).name
         draft["raw_audio_stored"] = False
-        draft["audio_retention_note"] = (
+        retention_note = (
             "Original clip bytes are not written to Figment traces; Gradio may keep upload/session files "
             "while the app is running, and committed demo clips stay on disk."
         )
+        if _should_use_hosted_omni_audio(config):
+            hosted_disclosure = _hosted_audio_disclosure_text()
+            draft["hosted_audio_disclosure"] = hosted_disclosure
+            retention_note = f"{retention_note} {hosted_disclosure}"
+        draft["audio_retention_note"] = retention_note
     if provider_error and draft.get("audio_intake_path") == "audio_received_needs_transcript_or_model":
         draft["processing_status"] = provider_error
     return draft
@@ -169,15 +179,24 @@ def run_case(intake: dict[str, Any], config: FigmentConfig | None = None, audio_
     confirmed = confirm_intake(intake, audio_draft=audio_draft)
     rules = evaluate_red_flags(confirmed)
     runtime_config = (config or load_config()).validated()
-    output, trace = run_navigation(confirmed, rules, audio_draft=audio_draft, config=runtime_config)
+    retrieved_cards = search_protocol_cards(query_from_intake(confirmed))
+    output, trace = run_navigation(
+        confirmed,
+        rules,
+        audio_draft=audio_draft,
+        config=runtime_config,
+        retrieved_cards=retrieved_cards,
+    )
     evaluation = evaluate_rules(confirmed)
+    trace_payload = normalize_trace_payload(trace.to_dict())
+    trace_payload["retrieval"] = retrieval_source_summary(retrieved_cards)
     return {
         "intake": confirmed,
         "risk": evaluation,
-        "retrieved_cards": search_protocol_cards(query_from_intake(confirmed)),
+        "retrieved_cards": retrieved_cards,
         "navigator_output": output,
         "sbar": render_sbar(output, trace.validator_result),
-        "trace": trace.to_dict(),
+        "trace": trace_payload,
     }
 
 
@@ -221,18 +240,31 @@ def build_app(config: FigmentConfig | None = None):
 
                             gr.HTML(
                                 _section_header_html(
-                                    "2. Live Omni audio ingest",
-                                    "Record the responder's live dictation first. Use file upload or canned clips only when a microphone is unavailable.",
+                                    _audio_section_title(config),
+                                    _audio_section_subtitle(config),
                                 )
                             )
                             with gr.Row():
                                 with gr.Column(scale=3):
-                                    audio_clip = gr.Audio(label="Live audio intake", sources=["microphone", "upload"], type="filepath")
+                                    audio_clip = gr.Audio(
+                                        label=_audio_clip_label(config),
+                                        sources=["microphone", "upload"],
+                                        type="filepath",
+                                        interactive=config.enable_audio_intake,
+                                    )
                                 with gr.Column(scale=2):
-                                    draft_btn = gr.Button("Draft Audio Fields", elem_classes=["primary"])
-                                    apply_audio = gr.Button("Apply Audio Draft")
-                                    gr.HTML('<span class="figment-chip green">Live mic primary</span> <span class="figment-chip amber">Confirm before rules run</span>')
-                            transcript = gr.Textbox(label="Dictated intake transcript", lines=3)
+                                    draft_btn = gr.Button(
+                                        "Draft Audio Fields",
+                                        elem_classes=["primary"],
+                                        interactive=config.enable_audio_intake,
+                                    )
+                                    apply_audio = gr.Button("Apply Audio Draft", interactive=config.enable_audio_intake)
+                                    gr.HTML(_audio_runtime_chips_html(config))
+                            transcript = gr.Textbox(
+                                label=_transcript_label(config),
+                                lines=3,
+                                interactive=config.enable_audio_intake,
+                            )
                             if examples := _demo_audio_examples():
                                 with gr.Accordion("Backup: upload/test audio clips", open=False):
                                     gr.HTML(
@@ -454,10 +486,69 @@ def _footer_rail_html(config: FigmentConfig) -> str:
 
 def _model_mode_label(config: FigmentConfig) -> str:
     if config.model_backend == "hosted_omni":
-        return "Hosted Omni (live)"
+        return "Configured backend: hosted_omni"
     if config.model_backend == "llama_cpp":
-        return "Local 4B text navigator"
-    return "Canned Trace (offline)"
+        return "Configured backend: llama_cpp"
+    return "Configured backend: canned"
+
+
+def _audio_section_title(config: FigmentConfig) -> str:
+    if not config.enable_audio_intake or config.audio_backend == "none":
+        return "2. Audio draft intake disabled"
+    if config.audio_backend == "omni_native" and config.model_backend == "hosted_omni":
+        return "2. Hosted Omni audio draft"
+    if config.audio_backend == "parakeet_nemo":
+        return "2. Local Parakeet ASR draft"
+    if config.audio_backend == "canned":
+        return "2. Canned audio demo draft"
+    return "2. Audio draft intake"
+
+
+def _audio_section_subtitle(config: FigmentConfig) -> str:
+    if not config.enable_audio_intake or config.audio_backend == "none":
+        return "Typed confirmed intake remains the only active source for rules and navigation."
+    if config.audio_backend == "omni_native" and config.model_backend == "hosted_omni":
+        return (
+            "Record or upload responder dictation for a provisional Omni draft. Audio is sent to the configured "
+            f"hosted endpoint; use only synthetic or de-identified clips. Limit: {hosted_audio_limits_text()}."
+        )
+    if config.audio_backend == "parakeet_nemo":
+        return "Use gated local ASR for provisional field suggestions, then confirm fields before rules run."
+    if config.audio_backend == "canned":
+        return "Use canned clips only as repeatable demo input, then confirm fields before rules run."
+    return "Draft suggestions are provisional until the confirmed intake form is reviewed."
+
+
+def _audio_clip_label(config: FigmentConfig) -> str:
+    if not config.enable_audio_intake or config.audio_backend == "none":
+        return "Audio intake disabled"
+    if config.audio_backend == "parakeet_nemo":
+        return "Parakeet audio intake"
+    if config.audio_backend == "canned":
+        return "Demo audio intake"
+    return "Hosted Omni audio intake"
+
+
+def _transcript_label(config: FigmentConfig) -> str:
+    if not config.enable_audio_intake or config.audio_backend == "none":
+        return "Typed transcript heuristic disabled"
+    return "Typed transcript heuristic"
+
+
+def _audio_runtime_chips_html(config: FigmentConfig) -> str:
+    if not config.enable_audio_intake or config.audio_backend == "none":
+        return '<span class="figment-chip amber">Audio intake disabled</span>'
+    chips = ['<span class="figment-chip amber">Confirm before rules run</span>']
+    if config.audio_backend == "omni_native" and config.model_backend == "hosted_omni":
+        chips.insert(0, '<span class="figment-chip green">Hosted Omni audio</span>')
+        chips.append('<span class="figment-chip amber">Hosted endpoint: synthetic/de-identified only</span>')
+    elif config.audio_backend == "parakeet_nemo":
+        chips.insert(0, '<span class="figment-chip blue">Parakeet ASR</span>')
+    elif config.audio_backend == "canned":
+        chips.insert(0, '<span class="figment-chip amber">Canned demo audio</span>')
+    else:
+        chips.insert(0, '<span class="figment-chip amber">Typed transcript heuristic</span>')
+    return " ".join(chips)
 
 
 def _section_header_html(title: str, subtitle: str = "") -> str:
@@ -637,6 +728,7 @@ def _protocol_results_html(cards: list[dict[str, Any]]) -> str:
             "<tr>"
             f"<td>{_h(item.get('card_id') or item_card.get('card_id'))}</td>"
             f"<td>{_h(_protocol_condition(item_card))}</td>"
+            f"<td>{_h(item.get('source') or 'unknown')}</td>"
             f"<td>{_h(_relevance_text(item))}</td>"
             "</tr>"
         )
@@ -655,7 +747,7 @@ def _protocol_results_html(cards: list[dict[str, Any]]) -> str:
     <div style="height:12px"></div>
     <div class="figment-section-title">Why these cards were retrieved</div>
     <table class="figment-table">
-      <thead><tr><th>Card ID</th><th>Matched Context</th><th>Relevance Reason</th></tr></thead>
+      <thead><tr><th>Card ID</th><th>Matched Context</th><th>Source</th><th>Relevance Reason</th></tr></thead>
       <tbody>{''.join(rationale_rows)}</tbody>
     </table>
     """
@@ -696,10 +788,10 @@ def _navigate_ui_with_summary(
     config: FigmentConfig | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any], str, str]:
     output, sbar, trace, trace_state = _navigate_ui(intake, audio_draft, config=config)
-    return output, sbar, trace, trace_state, _navigator_summary_html(output), _trace_audit_html(trace)
+    return output, sbar, trace, trace_state, _navigator_summary_html(output, trace), _trace_audit_html(trace)
 
 
-def _navigator_summary_html(output: dict[str, Any]) -> str:
+def _navigator_summary_html(output: dict[str, Any], trace: dict[str, Any] | None = None) -> str:
     if not output:
         return """
         <div class="figment-section-title">Protocol Urgency</div>
@@ -709,6 +801,7 @@ def _navigator_summary_html(output: dict[str, Any]) -> str:
     if urgency not in {"routine", "monitor", "urgent", "emergency"}:
         urgency = "routine"
     handoff = output.get("handoff_note_sbar") if isinstance(output.get("handoff_note_sbar"), dict) else {}
+    runtime_card = _runtime_contribution_card_html(trace)
     return f"""
     <div class="figment-urgency-banner">
       <div>
@@ -720,6 +813,8 @@ def _navigator_summary_html(output: dict[str, Any]) -> str:
         Minimum rules enforced. AI cannot lower this floor.
       </div>
     </div>
+    <div style="height:12px"></div>
+    {runtime_card}
     <div style="height:12px"></div>
     <div class="figment-card-grid">
       {_navigator_list_card_html("Missing Observations", output.get("missing_info_to_collect"))}
@@ -746,6 +841,30 @@ def _navigator_summary_html(output: dict[str, Any]) -> str:
     """
 
 
+def _runtime_contribution_card_html(trace: dict[str, Any] | None) -> str:
+    if not trace:
+        return ""
+    payload = normalize_trace_payload(trace)
+    route = payload.get("model_route") if isinstance(payload.get("model_route"), dict) else {}
+    retrieval = payload.get("retrieval") if isinstance(payload.get("retrieval"), dict) else {}
+    provenance_summary = payload.get("field_provenance_summary") if isinstance(payload.get("field_provenance_summary"), dict) else {}
+    final_route = str(route.get("final_route") or "unknown")
+    fallback_reason = route.get("fallback_reason") or "none"
+    retrieval_source = retrieval.get("primary_source") or "not traced"
+    return f"""
+    <div class="figment-mini-card">
+      <h4>Runtime contribution</h4>
+      <span class="figment-chip {_route_chip_class(final_route)}">{_h(runtime_route_label(route))}</span>
+      <span class="figment-chip">Configured backend: {_h(route.get('raw_route'))}</span>
+      <span class="figment-chip">validation={_h(route.get('validation_status'))}</span>
+      <span class="figment-chip">retrieval={_h(retrieval_source)}</span>
+      {_field_provenance_counts_html(provenance_summary)}
+      {_repair_metrics_inline_html(route)}
+      <div class="figment-section-subtitle">fallback_reason={_h(fallback_reason)}</div>
+    </div>
+    """
+
+
 def _navigator_list_card_html(title: str, values: Any, *, checked: bool = False) -> str:
     items = _as_list(values) or ["No items generated yet."]
     cls = "figment-checklist checked" if checked else "figment-checklist"
@@ -757,11 +876,46 @@ def _navigator_list_card_html(title: str, values: Any, *, checked: bool = False)
     )
 
 
+def _route_chip_class(final_route: str) -> str:
+    return {
+        "live_model_generated": "green",
+        "model_repaired": "blue",
+        "model_with_deterministic_patches": "blue",
+        "validation_fallback": "amber",
+        "canned_backend": "amber",
+    }.get(final_route, "amber")
+
+
+def _field_provenance_counts_html(summary: dict[str, Any]) -> str:
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    if not counts:
+        return '<span class="figment-chip">Field provenance: not traced</span>'
+    chips = [
+        f'<span class="figment-chip">Field provenance: {_h(name)}={_h(count)}</span>'
+        for name, count in sorted(counts.items())
+    ]
+    return "".join(chips)
+
+
+def _repair_metrics_inline_html(route: dict[str, Any]) -> str:
+    attempts = route.get("repair_attempt_count", 0)
+    if not attempts:
+        return '<span class="figment-chip">Repair calls: 0</span>'
+    cap = route.get("repair_attempt_cap", 0)
+    latency = route.get("repair_latency_ms", 0.0)
+    capped = " capped" if route.get("repair_capped") else ""
+    return (
+        f'<span class="figment-chip">Repair calls: {_h(attempts)} / {_h(cap)}{capped}</span>'
+        f'<span class="figment-chip">Repair latency: {_h(latency)} ms</span>'
+    )
+
+
 def _trace_audit_html(trace: dict[str, Any]) -> str:
     if not trace:
         return """
         <div class="figment-panel-soft">Run the navigator to populate timeline, validation, model route, and trace metadata.</div>
         """
+    trace = normalize_trace_payload(trace)
     events = _as_list(trace.get("events"))
     if not events:
         events = ["input captured", "rules evaluated", "cards retrieved", "navigator output generated", "validation complete"]
@@ -777,6 +931,9 @@ def _trace_audit_html(trace: dict[str, Any]) -> str:
         )
     validator = trace.get("validator_result") if isinstance(trace.get("validator_result"), dict) else {}
     route = trace.get("model_route") if isinstance(trace.get("model_route"), dict) else {}
+    retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
+    provenance_summary = trace.get("field_provenance_summary") if isinstance(trace.get("field_provenance_summary"), dict) else {}
+    final_route = str(route.get("final_route") or "unknown")
     return f"""
     <table class="figment-table">
       <thead><tr><th>Step</th><th>Component</th><th>Status</th><th>Details</th></tr></thead>
@@ -788,15 +945,32 @@ def _trace_audit_html(trace: dict[str, Any]) -> str:
         <h4>Audit Summary</h4>
         <span class="figment-chip green">Raw audio retained: false</span>
         <span class="figment-chip green">Schema valid: {_h(validator.get('passed'))}</span>
-        <span class="figment-chip green">Source cards present</span>
+        <span class="figment-chip {_route_chip_class(final_route)}">{_h(runtime_route_label(route))}</span>
+        <span class="figment-chip">Retrieval: {_h(retrieval.get('primary_source') or 'not traced')}</span>
       </div>
       <div class="figment-mini-card">
         <h4>Model &amp; Performance</h4>
         <table class="figment-table">
           <tbody>
-            <tr><td>Model mode</td><td>{_h(route.get('model_backend'))}</td></tr>
+            <tr><td>Raw route</td><td>{_h(route.get('raw_route'))}</td></tr>
+            <tr><td>Final route</td><td>{_h(route.get('final_route'))}</td></tr>
             <tr><td>Model ID</td><td>{_h(route.get('model_id'))}</td></tr>
             <tr><td>Fallback tier</td><td>{_h(route.get('fallback_tier'))}</td></tr>
+            <tr><td>Fallback reason</td><td>{_h(route.get('fallback_reason') or 'none')}</td></tr>
+            <tr><td>Validation status</td><td>{_h(route.get('validation_status'))}</td></tr>
+            <tr><td>Repair calls</td><td>{_h(route.get('repair_attempt_count', 0))} / {_h(route.get('repair_attempt_cap', 0))}</td></tr>
+            <tr><td>Repair latency ms</td><td>{_h(route.get('repair_latency_ms', 0.0))}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="figment-mini-card">
+        <h4>Field provenance</h4>
+        {_field_provenance_counts_html(provenance_summary)}
+        <table class="figment-table">
+          <tbody>
+            <tr><td>Total fields</td><td>{_h(provenance_summary.get('total_fields', 0))}</td></tr>
+            <tr><td>Deterministic patches</td><td>{_h(provenance_summary.get('deterministic_patch_count', 0))}</td></tr>
+            <tr><td>Model retained</td><td>{_h(provenance_summary.get('model_retained_count', 0))}</td></tr>
           </tbody>
         </table>
       </div>
@@ -808,13 +982,16 @@ def _trace_event_detail(event: str, trace: dict[str, Any]) -> str:
     if "rules" in event:
         return f"{len(trace.get('red_flags') or [])} deterministic red-flag result(s)."
     if "cards" in event:
-        return f"{len(trace.get('retrieved_card_ids') or [])} protocol card(s) retrieved."
+        retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
+        source = retrieval.get("primary_source")
+        suffix = f" via {source}" if source else ""
+        return f"{len(trace.get('retrieved_card_ids') or [])} protocol card(s) retrieved{suffix}."
     if "validation" in event:
         validator = trace.get("validator_result") if isinstance(trace.get("validator_result"), dict) else {}
         return "Output conforms to schema." if validator.get("passed") else "Validation failures present."
     if "model" in event or "navigator" in event:
         route = trace.get("model_route") if isinstance(trace.get("model_route"), dict) else {}
-        return str(route.get("model_backend") or "navigator output generated")
+        return runtime_route_label(route)
     return "Trace step recorded."
 
 
@@ -951,16 +1128,33 @@ def _should_use_hosted_omni_audio(config: FigmentConfig) -> bool:
     )
 
 
+def _hosted_audio_disclosure_text() -> str:
+    return (
+        "Hosted audio is sent to the configured hosted endpoint for drafting; use only synthetic or "
+        f"de-identified audio. Hosted upload cap: {hosted_audio_limits_text()}."
+    )
+
+
 def _apply_audio_draft_ui(*values: Any) -> list[Any]:
     *field_values, audio_draft = values
     if not audio_draft:
         return [*field_values, None, None]
     intake = collect_intake(*field_values)
+    updated_audio_draft = dict(audio_draft)
+    suggestions = []
     for suggestion in audio_draft.get("suggested_fields", []):
+        item = dict(suggestion)
         field = str(suggestion.get("field", ""))
         value = str(suggestion.get("draft_value", "")).strip()
         if field in intake and value and not intake.get(field):
             intake[field] = value
+            item["status"] = "applied_unreviewed"
+            item["needs_confirmation"] = True
+        suggestions.append(item)
+    updated_audio_draft["suggested_fields"] = suggestions
+    if suggestions:
+        updated_audio_draft["confirmed_intake_required"] = True
+        updated_audio_draft["confirmation_status"] = "unconfirmed"
     fields = [
         intake["setting"],
         intake["patient_age"],
@@ -973,7 +1167,7 @@ def _apply_audio_draft_ui(*values: Any) -> list[Any]:
         intake["available_supplies"],
         intake["responder_note"],
     ]
-    return [*fields, audio_draft, audio_draft]
+    return [*fields, updated_audio_draft, updated_audio_draft]
 
 
 def _confirm_ui_intake(*values: Any) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
@@ -1019,16 +1213,17 @@ def protocol_evidence_panel(retrieved_cards: list[dict[str, Any]]) -> str:
     lines = [
         "Prototype evidence/source material for trained-responder review only; not medical advice.",
         "",
-        "| Card ID | Title | Cue / boundary | Relevance |",
-        "| --- | --- | --- | --- |",
+        "| Card ID | Title | Source | Cue / boundary | Relevance |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for item in retrieved_cards:
         card = item.get("card") if isinstance(item.get("card"), dict) else item
         card_id = _compact_cell(str(item.get("card_id") or card.get("card_id") or "unknown"))
         title = _compact_cell(str(item.get("title") or card.get("title") or "Untitled card"))
+        source = _compact_cell(str(item.get("source") or "unknown"))
         cue = _compact_cell(_evidence_cue(card))
         relevance = _compact_cell(_relevance_text(item))
-        lines.append(f"| {card_id} | {title} | {cue} | {relevance} |")
+        lines.append(f"| {card_id} | {title} | {source} | {cue} | {relevance} |")
     return "\n".join(lines)
 
 

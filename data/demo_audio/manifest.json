@@ -1,4 +1,6 @@
 {
+  "asset_disclosure": "Synthetic demo clips generated with Voxtral TTS for repeatable Figment demos; they are not local Parakeet ASR proof.",
+  "local_asr_proof": false,
   "cases": [
     {
       "audio_path": "data/demo_audio/case_1_dictated_intake.wav",

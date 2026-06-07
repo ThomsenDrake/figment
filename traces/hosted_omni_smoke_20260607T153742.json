@@ -1,0 +1,153 @@
+{
+  "audio": null,
+  "events": [
+    "input captured",
+    "rules evaluated",
+    "cards retrieved",
+    "navigator output generated",
+    "validation complete"
+  ],
+  "input_captured": {
+    "confirmed_intake_hash": "80026196bd3ee808",
+    "structured_intake": {
+      "allergies": "none reported",
+      "available_supplies": "oral rehydration packets, cups, radio, cot",
+      "chief_concern": "possible dehydration after vomiting and diarrhea",
+      "confirmed": true,
+      "medications": "none reported",
+      "patient_age": "7 years",
+      "pregnancy_status": "not_applicable",
+      "responder_note": "Synthetic hosted Omni smoke case. No patient identifiers included.",
+      "setting": "shelter clinic",
+      "symptoms": "very dry mouth, unable to keep fluids down, no urine since morning, tired but answering questions",
+      "vitals": "temperature not measured; pulse fast by palpation; respirations not counted"
+    }
+  },
+  "model_route": {
+    "fallback_reason": null,
+    "fallback_tier": "configured",
+    "final_route": "live_model_generated",
+    "model_backend": "hosted_omni",
+    "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "model_stack": "omni_native",
+    "raw_route": "hosted_omni",
+    "runtime_contribution": "live_model_generated",
+    "runtime_label": "Live model generated",
+    "validation_status": "passed"
+  },
+  "navigator_output": {
+    "candidate_protocol_pathways": [
+      {
+        "card_id": "PED-DEHYD-RED-FLAGS-v1",
+        "reason_relevant": "Patient is a 7-year-old child with symptoms of dehydration (dry mouth, unable to keep fluids down, no urine output, lethargy) and deterministic red flag 'no urine' is present."
+      }
+    ],
+    "conflicts_or_uncertainties": [],
+    "do_not_do": [
+      "Do not diagnose dehydration severity as a final clinical diagnosis.",
+      "Do not provide medication, oral rehydration, or IV-fluid dosing instructions unless a local clinician or protocol explicitly provides them."
+    ],
+    "handoff_note_sbar": {
+      "assessment_observations_only": "7-year-old child with very dry mouth, unable to keep fluids down, no urine since morning, tired but answering questions.",
+      "background": "Shelter clinic setting, synthetic case with no patient identifiers, no known allergies, available supplies include oral rehydration packets and cups.",
+      "handoff_request": "Urgent escalation required due to pediatric dehydration red flag; request handoff to appropriate emergency or field clinic pathway.",
+      "situation": "Possible severe dehydration in a child with critical red flag (no urine output) requiring urgent medical attention."
+    },
+    "intake_facts": [
+      {
+        "fact": "Patient is 7 years old",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Symptoms include very dry mouth, unable to keep fluids down, no urine since morning, tired but answering questions",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "No allergies reported",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Available supplies: oral rehydration packets, cups, radio, cot",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "No medications reported",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Setting: shelter clinic",
+        "source": "structured_field",
+        "status": "reported"
+      },
+      {
+        "fact": "Vitals: temperature not measured; pulse fast by palpation; respirations not counted",
+        "source": "structured_field",
+        "status": "reported"
+      }
+    ],
+    "missing_info_to_collect": [
+      "Confirmed urine output status (volume and frequency)",
+      "Mental status assessment (e.g., level of alertness, response to stimuli)",
+      "Ability to drink or keep oral fluids down (specifics on vomiting frequency)",
+      "Perfusion observations (e.g., skin turgor, capillary refill, heart rate quality)",
+      "Age or estimated age (if not exact)",
+      "Vital signs (temperature, oxygen saturation, blood pressure if available)"
+    ],
+    "next_observations_to_collect": [
+      "Urine output volume and frequency over the past few hours",
+      "Detailed mental status (e.g., can the child stay awake, respond to voice, follow commands)",
+      "Ability to retain oral fluids (how much vomiting, frequency of attempts to drink)",
+      "Perfusion signs (skin turgor, capillary refill time, pulse quality)",
+      "Temperature and oxygen saturation if obtainable"
+    ],
+    "protocol_urgency": "urgent",
+    "red_flags": [
+      "no urine reported for a prolonged period (pediatric dehydration red flag)"
+    ],
+    "responder_checklist": [
+      "Confirm age of child (7 years)",
+      "Assess mental status: alertness, response to voice, ability to stay awake",
+      "Document urine output: volume and frequency since morning",
+      "Evaluate ability to drink: can the child keep fluids down, frequency of vomiting",
+      "Observe physical signs: sunken eyes, dry mouth, skin turgor, capillary refill",
+      "Assess perfusion: fast pulse, skin color, warmth",
+      "Initiate urgent escalation per local protocol due to pediatric dehydration red flag",
+      "Document all observations for handoff using SBAR format"
+    ],
+    "responder_plain_language_script": "This is a 7-year-old child with signs of severe dehydration \u2014 very dry mouth, can't keep fluids down, and hasn't urinated since this morning. They are tired and need urgent medical help right away. We need to get them to a place where they can get fluids and be checked by a clinician immediately.",
+    "safety_boundary": "Prototype safety-boundary card for trained-responder review only. Figment supports protocol navigation and handoff drafting; it is not a clinician, not a medical device, and not a substitute for local protocol or emergency escalation.",
+    "source_cards": [
+      "SAFETY-BOUNDARIES-v1",
+      "PED-DEHYD-RED-FLAGS-v1",
+      "REFERRAL-SBAR-v1"
+    ]
+  },
+  "prompt_template_hash": "9a176778efcd60ba",
+  "raw_audio_stored": false,
+  "red_flags": [
+    {
+      "card_id": "PED-DEHYD-RED-FLAGS-v1",
+      "evidence": "no urine",
+      "label": "Pediatric dehydration red flag",
+      "rule_id": "PED-DEHYD-001",
+      "urgency": "urgent"
+    }
+  ],
+  "retrieved_card_ids": [
+    "SAFETY-BOUNDARIES-v1",
+    "PED-DEHYD-RED-FLAGS-v1",
+    "REFERRAL-SBAR-v1",
+    "RESP-DISTRESS-RED-FLAGS-v1",
+    "AMS-RED-FLAGS-v1",
+    "STROKE-SIGNS-v1"
+  ],
+  "validator_result": {
+    "failures": [],
+    "passed": true
+  }
+}

@@ -55,13 +55,21 @@ class RepairingModelClient:
         if type(self).calls == 1:
             return {
                 "protocol_urgency": "routine",
+                "red_flags": _emergency_chest_pain_rules(),
+                "intake_facts": [
+                    {
+                        "fact": "Chest pain with shortness of breath reported.",
+                        "status": "reported",
+                        "source": "structured_field",
+                    }
+                ],
                 "candidate_protocol_pathways": [
                     {
                         "card_id": "CHEST-PAIN-ESCALATION-v1",
                         "reason_relevant": "Chest pain was reported.",
                     }
                 ],
-                "missing_info_to_collect": [],
+                "missing_info_to_collect": ["repeat vital signs"],
                 "next_observations_to_collect": [],
                 "conflicts_or_uncertainties": [],
                 "responder_checklist": ["Escalate per cited local protocol."],
@@ -78,6 +86,14 @@ class RepairingModelClient:
             }
         return {
             "protocol_urgency": "emergency",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Chest pain with shortness of breath reported.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
             "candidate_protocol_pathways": [
                 {
                     "card_id": "CHEST-PAIN-ESCALATION-v1",
@@ -98,6 +114,168 @@ class RepairingModelClient:
             },
             "responder_plain_language_script": "",
             "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
+        }
+
+
+class PartiallyInvalidModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        if type(self).calls > 1:
+            raise navigator.ModelClientError("focused repair unavailable")
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Model retained chest pain fact.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "CHEST-PAIN-ESCALATION-v1",
+                    "reason_relevant": "Model retained cited chest pain pathway.",
+                }
+            ],
+            "missing_info_to_collect": ["Model retained onset and duration question."],
+            "next_observations_to_collect": ["Model retained work of breathing check."],
+            "conflicts_or_uncertainties": ["Model retained uncertainty note."],
+            "responder_checklist": ["Model retained checklist item."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain",
+                "background": "Adult reports chest pain after cleanup work.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported.",
+            },
+            "responder_plain_language_script": "Model retained plain language script.",
+            "safety_boundary": "Prototype protocol navigation only; do not diagnose or prescribe.",
+        }
+
+
+class SparseSchemaModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        if type(self).calls > 1:
+            raise navigator.ModelClientError("focused repair unavailable")
+        return {
+            "protocol_urgency": "emergency",
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "CHEST-PAIN-ESCALATION-v1",
+                    "reason_relevant": "Chest pain with shortness of breath was reported.",
+                }
+            ],
+            "missing_info_to_collect": ["repeat vital signs"],
+            "next_observations_to_collect": ["work of breathing"],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Model retained checklist item."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain",
+                "background": "Adult reports chest pain after cleanup work.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported.",
+                "handoff_request": "Escalate per protocol",
+            },
+            "responder_plain_language_script": "Model retained plain language script.",
+            "safety_boundary": "Prototype protocol navigation only; do not diagnose or prescribe.",
+        }
+
+
+class UnretrievedUngroundedModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        if type(self).calls > 1:
+            raise navigator.ModelClientError("focused repair unavailable")
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Chest pain with shortness of breath reported.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "WOUND-INFECTION-ESCALATION-v1",
+                    "reason_relevant": "The model reached for a known but unretrieved card.",
+                }
+            ],
+            "missing_info_to_collect": ["ask anything else that seems relevant"],
+            "next_observations_to_collect": ["keep monitoring"],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Model retained checklist item."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1", "WOUND-INFECTION-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain",
+                "background": "Adult reports chest pain after cleanup work.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported.",
+                "handoff_request": "Escalate per protocol",
+            },
+            "responder_plain_language_script": "Model retained plain language script.",
+            "safety_boundary": "Prototype protocol navigation only; do not diagnose or prescribe.",
+        }
+
+
+class MultiFailureRepairModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        if type(self).calls > 1:
+            raise navigator.ModelClientError("focused repair unavailable")
+        return {
+            "protocol_urgency": "routine",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Chest pain with shortness of breath reported.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "WOUND-INFECTION-ESCALATION-v1",
+                    "reason_relevant": "The model reached for a known but unretrieved card.",
+                }
+            ],
+            "missing_info_to_collect": ["ask anything else that seems relevant"],
+            "next_observations_to_collect": ["keep monitoring"],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Prescribe opioid now."],
+            "do_not_do": [],
+            "source_cards": ["WOUND-INFECTION-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Skull fracture with chest pain",
+                "background": "Unrelated unsupported background.",
+                "assessment_observations_only": "Blood pressure 220/140 observed.",
+            },
+            "responder_plain_language_script": "Model retained plain language script.",
+            "safety_boundary": "Prototype protocol navigation only.",
         }
 
 
@@ -139,6 +317,12 @@ def _retrieved_chest_pain_cards() -> list[dict[str, Any]]:
             "card": {
                 "card_id": "CHEST-PAIN-ESCALATION-v1",
                 "title": "Chest pain escalation",
+                "required_observations": [
+                    "chest pain description",
+                    "onset and duration",
+                    "shortness of breath report",
+                    "available vital signs",
+                ],
             },
         }
     ]
@@ -230,6 +414,28 @@ def test_run_navigation_retries_hosted_output_repair_before_fallback(monkeypatch
     assert any("repaired by hosted retry" in event for event in trace.events)
 
 
+def test_run_navigation_retains_valid_model_fields_with_field_provenance(monkeypatch) -> None:
+    PartiallyInvalidModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", PartiallyInvalidModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    assert output["responder_checklist"] == ["Model retained checklist item."]
+    assert output["handoff_note_sbar"]["handoff_request"]
+    assert trace.validator_result["passed"] is True
+    assert trace.model_route["fallback_tier"] == "configured"
+    assert trace.model_route["field_level_fallback_used"] is True
+    assert trace.field_provenance["responder_checklist"] == "model_raw"
+    assert trace.field_provenance["handoff_note_sbar"] == "deterministic_fallback"
+    assert trace.to_dict()["field_provenance"]["responder_checklist"] == "model_raw"
+    assert any("field-level" in event for event in trace.events)
+
+
 def test_run_navigation_scrubs_audio_trace_payload(tmp_path: Path) -> None:
     trace_path = tmp_path / "navigator-trace.json"
 
@@ -274,3 +480,61 @@ def test_run_navigation_keeps_safe_audio_route_labels_in_trace() -> None:
     )
 
     assert trace.to_dict()["audio"]["audio_intake_path"] == "omni_native"
+
+
+def test_run_navigation_strict_schema_prevents_sparse_output_from_model_raw_label(monkeypatch) -> None:
+    SparseSchemaModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", SparseSchemaModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+    payload = trace.to_dict()
+
+    assert output["red_flags"] == _emergency_chest_pain_rules()
+    assert trace.validator_result["passed"] is True
+    assert trace.model_route["strict_validation"] is True
+    assert trace.field_provenance["red_flags"] == "deterministic_fallback"
+    assert trace.field_provenance["responder_checklist"] == "model_raw"
+    assert payload["model_route"]["final_route"] == "model_with_deterministic_patches"
+    assert payload["field_provenance_summary"]["counts"]["deterministic_fallback"] >= 1
+
+
+def test_run_navigation_enforces_retrieved_cards_and_observation_grounding(monkeypatch) -> None:
+    UnretrievedUngroundedModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", UnretrievedUngroundedModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    assert "WOUND-INFECTION-ESCALATION-v1" not in output["source_cards"]
+    assert output["source_cards"] == ["CHEST-PAIN-ESCALATION-v1"]
+    assert trace.validator_result["passed"] is True
+    assert trace.field_provenance["source_cards"] == "deterministic_fallback"
+    assert trace.field_provenance["missing_info_to_collect"] == "deterministic_fallback"
+    assert trace.to_dict()["model_route"]["final_route"] == "model_with_deterministic_patches"
+
+
+def test_run_navigation_caps_focused_repair_attempts_and_traces_metrics(monkeypatch) -> None:
+    MultiFailureRepairModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", MultiFailureRepairModelClient)
+
+    _output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    assert MultiFailureRepairModelClient.calls == 3
+    assert trace.model_route["repair_attempt_count"] == 2
+    assert trace.model_route["repair_attempt_cap"] == 2
+    assert trace.model_route["repair_capped"] is True
+    assert trace.model_route["repair_latency_ms"] >= 0

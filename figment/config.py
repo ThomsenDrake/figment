@@ -14,6 +14,7 @@ NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID = "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
 PARAKEET_ASR_MODEL_ID = "nvidia/parakeet-rnnt-1.1b"
 NVIDIA_OMNI_API_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 NVIDIA_API_BASE_URL = "https://integrate.api.nvidia.com/v1"
+FIGMENT_CANNED_MODEL_ID = "figment-canned-deterministic"
 
 MODEL_STACKS = {"omni_native", "local_4b_parakeet"}
 MODEL_BACKENDS = {"hosted_omni", "llama_cpp", "canned"}
@@ -44,6 +45,29 @@ def _default_backend_for_env(
     return "canned"
 
 
+def _mode_consistency_errors(
+    mode: str,
+    stack: str,
+    backend: str,
+    audio_backend: str,
+    *,
+    allow_self_hosted_omni: bool = False,
+    strict_hosted_local_backend: bool = False,
+) -> list[str]:
+    errors: list[str] = []
+    if strict_hosted_local_backend and mode == "hosted" and backend == "llama_cpp":
+        errors.append("FIGMENT_MODE=hosted cannot use MODEL_BACKEND=llama_cpp; use FIGMENT_MODE=local for llama_cpp")
+    if mode == "local":
+        self_hosted_omni_path = allow_self_hosted_omni and stack == "omni_native" and backend in {"hosted_omni", "llama_cpp"}
+        if backend == "hosted_omni" and not self_hosted_omni_path:
+            errors.append("FIGMENT_MODE=local with MODEL_BACKEND=hosted_omni requires ALLOW_SELF_HOSTED_OMNI=true")
+        if stack == "omni_native" and not self_hosted_omni_path:
+            errors.append("FIGMENT_MODE=local cannot use MODEL_STACK=omni_native without a proven self-hosted Omni path")
+        if audio_backend == "omni_native" and not self_hosted_omni_path:
+            errors.append("FIGMENT_MODE=local cannot use AUDIO_BACKEND=omni_native without ALLOW_SELF_HOSTED_OMNI=true")
+    return errors
+
+
 @dataclass(frozen=True)
 class FigmentConfig:
     figment_mode: str = "hosted"
@@ -52,6 +76,7 @@ class FigmentConfig:
     audio_backend: str = "none"
     enable_audio_intake: bool = False
     allow_local_asr: bool = False
+    allow_self_hosted_omni: bool = False
     hf_model_id: str = OMNI_MODEL_ID
     hf_token: str = ""
     nvidia_api_key: str = ""
@@ -86,6 +111,17 @@ class FigmentConfig:
         if not stack:
             stack = "local_4b_parakeet" if backend == "llama_cpp" else "omni_native"
         audio = os.getenv("AUDIO_BACKEND", "none").strip() or "none"
+        allow_self_hosted_omni = _bool_env(os.getenv("ALLOW_SELF_HOSTED_OMNI"), False)
+        mode_errors = _mode_consistency_errors(
+            mode,
+            stack,
+            backend,
+            audio,
+            allow_self_hosted_omni=allow_self_hosted_omni,
+            strict_hosted_local_backend=True,
+        )
+        if mode_errors:
+            raise ValueError("; ".join(mode_errors))
         enable_audio = _bool_env(os.getenv("ENABLE_AUDIO_INTAKE"), False)
         if _bool_env(os.getenv("ALLOW_STRETCH_STACK"), False):
             raise ValueError("ALLOW_STRETCH_STACK is retired; use ALLOW_LOCAL_ASR=true with MODEL_STACK=local_4b_parakeet")
@@ -97,6 +133,7 @@ class FigmentConfig:
             audio_backend=audio,
             enable_audio_intake=enable_audio,
             allow_local_asr=allow_local_asr,
+            allow_self_hosted_omni=allow_self_hosted_omni,
             hf_model_id=os.getenv("HF_MODEL_ID", OMNI_MODEL_ID).strip() or OMNI_MODEL_ID,
             hf_token=os.getenv("HF_TOKEN", "").strip(),
             nvidia_api_key=nvidia_api_key,
@@ -128,6 +165,15 @@ class FigmentConfig:
             errors.append("AUDIO_BACKEND=parakeet_nemo requires ALLOW_LOCAL_ASR=true")
         if self.audio_backend == "parakeet_nemo" and self.model_stack != "local_4b_parakeet":
             errors.append("AUDIO_BACKEND=parakeet_nemo requires MODEL_STACK=local_4b_parakeet")
+        errors.extend(
+            _mode_consistency_errors(
+                self.figment_mode,
+                self.model_stack,
+                self.model_backend,
+                self.audio_backend,
+                allow_self_hosted_omni=self.allow_self_hosted_omni,
+            )
+        )
         if self.model_backend == "hosted_omni":
             hosted_endpoint = self.omni_endpoint_url or self.hf_endpoint_url or self.nvidia_base_url
             if not hosted_endpoint:
@@ -144,7 +190,7 @@ class FigmentConfig:
             return self.nvidia_model_id
         if self.model_backend == "llama_cpp" or self.model_stack == "local_4b_parakeet":
             return self.local_model_id
-        return self.hf_model_id or OMNI_MODEL_ID
+        return FIGMENT_CANNED_MODEL_ID
 
     @property
     def audio_model_id(self) -> str | None:

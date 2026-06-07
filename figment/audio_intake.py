@@ -6,6 +6,9 @@ drafting path only; confirmed typed intake remains the source of truth.
 
 from __future__ import annotations
 
+from functools import lru_cache
+import json
+from pathlib import Path
 import re
 from typing import Any
 
@@ -22,6 +25,7 @@ from .schemas import AudioDraft, AudioFieldSuggestion
 LOCAL_PARAKEET_AUDIO_BACKENDS = {"parakeet_nemo", "local_4b_parakeet"}
 LOCAL_PARAKEET_RUNTIME = "local_4b_parakeet"
 LOCAL_PARAKEET_PATH = "parakeet_rnnt_plus_text_nemotron"
+DEMO_AUDIO_MANIFEST_PATH = Path(__file__).resolve().parents[1] / "data" / "demo_audio" / "manifest.json"
 ALLOWED_AUDIO_SUGGESTION_FIELDS = {
     "setting",
     "patient_age",
@@ -94,16 +98,19 @@ RED_FLAG_HINTS = (
 
 CANNED_TRANSCRIPTS = {
     "pediatric_dehydration": (
-        "Four-year-old at a disaster shelter with repeated watery stool, very tired, dry mouth, "
-        "and no urine since this morning. I think pulse is fast but I have not taken a full set of vitals."
+        "Seven year old at a shelter clinic after flood cleanup. Child cannot keep fluids down, is lethargic, "
+        "has a very dry mouth, and has no urine since morning. Temperature and blood pressure are missing. "
+        "Supplies include oral rehydration solution, radio, and transport team."
     ),
     "wound_infection": (
-        "Adult with a leg cut from debris three days ago. The area is more painful with spreading redness "
-        "and warmth. Need to check temperature and drainage."
+        "Forty three year old at a mobile clinic with a leg cut from debris three days ago. The wound is getting "
+        "worse with spreading redness, swelling, and foul drainage. Temperature is unknown. Supplies are clean "
+        "dressings and radio."
     ),
     "pregnancy_danger_sign": (
-        "Pregnant patient, about thirty-two weeks, reports severe headache and visual spots. "
-        "Blood pressure was high on the first check. Needs immediate protocol review."
+        "Twenty nine year old pregnant patient at a rural clinic with vaginal bleeding, severe headache, and "
+        "dizziness. Blood pressure is not available. She reports a prenatal vitamin. Phone and transport contact "
+        "are available."
     ),
 }
 
@@ -122,7 +129,7 @@ def draft_audio_intake(
 
     audio_enabled = config.enable_audio_intake and config.audio_backend != "none"
     if not audio_enabled:
-        return AudioDraft(
+        draft = AudioDraft(
             audio_intake_path="typed_only",
             audio_model_id=None,
             field_fill_model_id=None,
@@ -135,10 +142,29 @@ def draft_audio_intake(
             confirmation_status="confirmed",
             raw_audio_stored=False,
         ).to_dict()
+        draft["draft_source"] = "typed_intake_only"
+        draft["transcript_source"] = "typed_intake_form"
+        draft["audio_source"] = "none"
+        return draft
 
     transcript = _clean_text(transcript)
+    provider_payload_used = False
+    typed_transcript_used = False
+    canned_demo_used = False
+    transcript_source = "none"
+    audio_source = "none"
     if _has_provider_payload(provider_payload):
+        provider_payload_used = True
         transcript = _clean_text(provider_payload.get("transcript", transcript))
+        if _is_local_parakeet_backend(config):
+            transcript_source = "local_parakeet_asr_provider"
+            audio_source = "local_parakeet_asr_payload"
+        elif config.audio_backend == "omni_native":
+            transcript_source = "hosted_omni_provider"
+            audio_source = "hosted_omni_audio_payload"
+        else:
+            transcript_source = "provider_payload"
+            audio_source = "provider_payload"
         suggestions = _provider_suggestions(provider_payload)
         if not suggestions and transcript:
             suggestions = _suggest_fields(transcript)
@@ -155,11 +181,17 @@ def draft_audio_intake(
             _red_flag_mentions(transcript),
         )
     elif transcript:
+        typed_transcript_used = True
+        transcript_source = "typed_transcript"
+        audio_source = "typed_text_only"
         suggestions = _suggest_fields(transcript)
         missing = _missing_fields(suggestions, transcript)
         mentions = _red_flag_mentions(transcript)
     elif config.audio_backend == "canned" and not audio_file_received:
-        transcript = CANNED_TRANSCRIPTS.get(case_id, CANNED_TRANSCRIPTS["pediatric_dehydration"])
+        canned_demo_used = True
+        transcript = _canned_transcript(case_id)
+        transcript_source = "synthetic_demo_manifest"
+        audio_source = "committed_synthetic_demo_asset"
         suggestions = _suggest_fields(transcript)
         missing = _missing_fields(suggestions, transcript)
         mentions = _red_flag_mentions(transcript)
@@ -168,17 +200,24 @@ def draft_audio_intake(
 
     audio_model_id = None
     field_fill_model_id = None
-    runtime = config.audio_backend
-    path = "canned_audio_demo" if config.audio_backend == "canned" else "omni_native"
-    if audio_enabled and config.audio_backend == "omni_native":
+    runtime = "typed_transcript_heuristic" if typed_transcript_used else config.audio_backend
+    path = "typed_transcript_heuristic" if typed_transcript_used else "omni_native"
+    draft_source = "typed_transcript_heuristic" if typed_transcript_used else "provider_payload"
+    if canned_demo_used:
+        path = "canned_audio_demo"
+        runtime = "canned"
+        draft_source = "canned_audio_demo"
+    elif provider_payload_used and audio_enabled and config.audio_backend == "omni_native":
         audio_model_id = OMNI_MODEL_ID
-    elif audio_enabled and _is_local_parakeet_backend(config):
+        draft_source = "omni_audio_provider"
+    elif provider_payload_used and audio_enabled and _is_local_parakeet_backend(config):
         audio_model_id = PARAKEET_ASR_MODEL_ID
         field_fill_model_id = _local_field_fill_model_id(config)
         runtime = LOCAL_PARAKEET_RUNTIME
         path = LOCAL_PARAKEET_PATH
+        draft_source = "parakeet_asr_provider"
 
-    return AudioDraft(
+    draft = AudioDraft(
         audio_intake_path=path,
         audio_model_id=audio_model_id,
         field_fill_model_id=field_fill_model_id,
@@ -191,6 +230,10 @@ def draft_audio_intake(
         confirmation_status="unconfirmed",
         raw_audio_stored=False,
     ).to_dict()
+    draft["draft_source"] = draft_source
+    draft["transcript_source"] = transcript_source
+    draft["audio_source"] = audio_source
+    return draft
 
 
 def _unprocessed_audio_draft(
@@ -212,7 +255,32 @@ def _unprocessed_audio_draft(
         raw_audio_stored=False,
     ).to_dict()
     draft["processing_status"] = processing_status
+    draft["draft_source"] = "unprocessed_audio"
+    draft["transcript_source"] = "none"
+    draft["audio_source"] = "unprocessed_audio"
     return draft
+
+
+def _canned_transcript(case_id: str) -> str:
+    manifest_transcripts = _demo_manifest_source_scripts()
+    return manifest_transcripts.get(case_id) or CANNED_TRANSCRIPTS.get(case_id, CANNED_TRANSCRIPTS["pediatric_dehydration"])
+
+
+@lru_cache(maxsize=1)
+def _demo_manifest_source_scripts() -> dict[str, str]:
+    try:
+        payload = json.loads(DEMO_AUDIO_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    transcripts: dict[str, str] = {}
+    for item in payload.get("cases", []):
+        if not isinstance(item, dict):
+            continue
+        slug = _clean_text(item.get("slug", ""))
+        source_script = _clean_text(item.get("source_script", "")) or _clean_text(item.get("voxtral_transcript", ""))
+        if slug and source_script:
+            transcripts[slug] = source_script
+    return transcripts
 
 
 def confirm_audio_draft(

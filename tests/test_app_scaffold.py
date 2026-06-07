@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from figment import config as config_module
-from figment.config import FigmentConfig, OMNI_MODEL_ID, NVIDIA_OMNI_API_MODEL_ID
+from figment.config import FIGMENT_CANNED_MODEL_ID, FigmentConfig, NVIDIA_OMNI_API_MODEL_ID
 from figment.validators import validate_audio_ready, validate_navigator_output
 
 
@@ -15,6 +15,7 @@ CONFIG_ENV_KEYS = (
     "AUDIO_BACKEND",
     "ENABLE_AUDIO_INTAKE",
     "ALLOW_LOCAL_ASR",
+    "ALLOW_SELF_HOSTED_OMNI",
     "ALLOW_STRETCH_STACK",
     "HF_MODEL_ID",
     "NVIDIA_MODEL_ID",
@@ -45,7 +46,7 @@ def test_config_defaults_to_omni_with_canned_fallback_without_hosted_secret(
 
     assert config.model_stack == "omni_native"
     assert config.model_backend == "canned"
-    assert config.active_model_id == OMNI_MODEL_ID
+    assert config.active_model_id == FIGMENT_CANNED_MODEL_ID
 
 
 def test_config_uses_hosted_omni_api_model_id_when_secret_is_present(
@@ -75,7 +76,7 @@ def test_hf_token_without_endpoint_does_not_select_hosted_omni(
     config = FigmentConfig.from_env()
 
     assert config.model_backend == "canned"
-    assert config.active_model_id == OMNI_MODEL_ID
+    assert config.active_model_id == FIGMENT_CANNED_MODEL_ID
 
 
 def test_hf_endpoint_selects_hosted_omni_with_hf_token(

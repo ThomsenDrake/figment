@@ -1,4 +1,8 @@
 import importlib
+import json
+import wave
+
+import pytest
 
 from figment.config import FigmentConfig, OMNI_MODEL_ID
 
@@ -31,6 +35,7 @@ def test_hosted_omni_provider_payload_becomes_unconfirmed_audio_draft() -> None:
     assert draft["audio_runtime"] == "omni_native"
     assert draft["audio_model_id"] == OMNI_MODEL_ID
     assert draft["field_fill_model_id"] is None
+    assert draft["transcript_source"] == "hosted_omni_provider"
     assert draft["transcript"] == provider_payload["transcript"]
     assert draft["missing_or_unclear_fields"] == ["blood_pressure", "pregnancy_status"]
     assert draft["provisional_red_flag_mentions"] == ["severe headache", "visual spots"]
@@ -277,7 +282,7 @@ def test_hosted_omni_audio_failure_fails_closed(tmp_path, monkeypatch) -> None:
     assert "not written to figment traces" in draft["audio_retention_note"].lower()
 
 
-def test_local_parakeet_path_uses_local_4b_runtime_label_when_gated() -> None:
+def test_local_parakeet_provider_payload_uses_local_4b_runtime_label_when_gated() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(
         model_stack="local_4b_parakeet",
@@ -288,7 +293,16 @@ def test_local_parakeet_path_uses_local_4b_runtime_label_when_gated() -> None:
     ).validated()
 
     draft = app.draft_audio_intake(
-        transcript="Local Parakeet transcript says the patient has trouble breathing.",
+        provider_payload={
+            "transcript": "Local Parakeet transcript says the patient has trouble breathing.",
+            "suggested_fields": [
+                {
+                    "field": "symptoms",
+                    "draft_value": "trouble breathing",
+                    "source_snippet": "trouble breathing",
+                }
+            ],
+        },
         config=config,
     )
 
@@ -296,7 +310,31 @@ def test_local_parakeet_path_uses_local_4b_runtime_label_when_gated() -> None:
     assert draft["audio_runtime"] == "local_4b_parakeet"
     assert draft["audio_model_id"] == "nvidia/parakeet-rnnt-1.1b"
     assert draft["field_fill_model_id"] == "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
+    assert draft["transcript_source"] == "local_parakeet_asr_provider"
     assert draft["confirmation_status"] == "unconfirmed"
+
+
+def test_typed_transcript_under_parakeet_config_stays_heuristic_not_asr() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_stack="local_4b_parakeet",
+        model_backend="llama_cpp",
+        enable_audio_intake=True,
+        audio_backend="parakeet_nemo",
+        allow_local_asr=True,
+    ).validated()
+
+    draft = app.draft_audio_intake(
+        transcript="Typed note says the patient has trouble breathing.",
+        config=config,
+    )
+
+    assert draft["audio_intake_path"] == "typed_transcript_heuristic"
+    assert draft["audio_runtime"] == "typed_transcript_heuristic"
+    assert draft["audio_model_id"] is None
+    assert draft["field_fill_model_id"] is None
+    assert draft["draft_source"] == "typed_transcript_heuristic"
+    assert draft["transcript_source"] == "typed_transcript"
 
 
 def test_confirm_intake_does_not_silently_bulk_accept_audio_suggestions() -> None:
@@ -443,7 +481,24 @@ def test_apply_audio_draft_prefills_empty_fields_without_confirming() -> None:
 
     assert fields[3] == "chest pain"
     assert audio_json["confirmation_status"] == "unconfirmed"
+    assert audio_json["suggested_fields"][0]["status"] == "applied_unreviewed"
+    assert audio_json["suggested_fields"][0]["needs_confirmation"] is True
     assert audio_state is audio_json
+
+    intake = app.collect_intake(
+        fields[0],
+        fields[1],
+        fields[2],
+        fields[3],
+        fields[4],
+        fields[5],
+        fields[6],
+        fields[7],
+        fields[8],
+        fields[9],
+    )
+    with pytest.raises(ValueError, match="audio-derived intake must be confirmed"):
+        app.confirm_intake(intake, audio_draft=audio_state)
 
 
 def test_loading_demo_case_resets_audio_and_downstream_state() -> None:
@@ -548,8 +603,110 @@ def test_canned_audio_backend_is_labeled_as_canned_demo_runtime() -> None:
     assert draft["audio_runtime"] == "canned"
     assert draft["audio_intake_path"] == "canned_audio_demo"
     assert draft["audio_model_id"] is None
+    assert draft["transcript_source"] == "synthetic_demo_manifest"
     assert draft["transcript"]
     assert draft["suggested_fields"]
+
+
+def test_canned_demo_transcript_matches_committed_manifest_pediatric_age() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="canned",
+        enable_audio_intake=True,
+        audio_backend="canned",
+    ).validated()
+    manifest = json.loads((app.PROJECT_ROOT / "data" / "demo_audio" / "manifest.json").read_text(encoding="utf-8"))
+    pediatric_case = next(item for item in manifest["cases"] if item["slug"] == "pediatric_dehydration")
+
+    draft = app.draft_audio_intake(transcript="", config=config, provider_payload=None)
+
+    assert draft["transcript"] == pediatric_case["source_script"]
+    assert "Seven year old" in draft["transcript"]
+    assert "Four-year-old" not in draft["transcript"]
+    assert next(item for item in draft["suggested_fields"] if item["field"] == "patient_age")["draft_value"] == "7 years"
+
+
+def test_hosted_audio_ui_discloses_endpoint_and_deidentified_limit() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+        nvidia_api_key="test-nvidia-key",
+    ).validated()
+
+    subtitle = app._audio_section_subtitle(config).lower()
+    chips = app._audio_runtime_chips_html(config).lower()
+
+    assert "sent to the configured hosted endpoint" in subtitle
+    assert "synthetic or de-identified" in subtitle
+    assert "10 mb" in subtitle
+    assert "60 seconds" in subtitle
+    assert "hosted endpoint" in chips
+
+
+def test_hosted_audio_oversize_file_fails_closed_before_provider_call(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    import figment.model_client as model_client
+
+    audio_path = tmp_path / "too-large.wav"
+    audio_path.write_bytes(b"0123456789")
+    monkeypatch.setattr(model_client, "HOSTED_AUDIO_MAX_BYTES", 8)
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+        nvidia_api_key="test-nvidia-key",
+    ).validated()
+
+    class FailIfCalledModelClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def generate_audio_draft(self, _audio_file):
+            raise AssertionError("oversize audio should be rejected before provider call")
+
+    monkeypatch.setattr(app, "ModelClient", FailIfCalledModelClient)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert draft["audio_intake_path"] == "audio_received_needs_transcript_or_model"
+    assert "exceeds hosted audio size limit" in draft["processing_status"].lower()
+    assert draft["audio_filename"] == "too-large.wav"
+
+
+def test_hosted_audio_long_wav_fails_closed_before_provider_call(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    import figment.model_client as model_client
+
+    audio_path = tmp_path / "too-long.wav"
+    with wave.open(str(audio_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(8000)
+        wav_file.writeframes(b"\0\0" * 8000)
+    monkeypatch.setattr(model_client, "HOSTED_AUDIO_MAX_SECONDS", 0.01)
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+        nvidia_api_key="test-nvidia-key",
+    ).validated()
+
+    class FailIfCalledModelClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def generate_audio_draft(self, _audio_file):
+            raise AssertionError("long audio should be rejected before provider call")
+
+    monkeypatch.setattr(app, "ModelClient", FailIfCalledModelClient)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert draft["audio_intake_path"] == "audio_received_needs_transcript_or_model"
+    assert "exceeds hosted audio duration limit" in draft["processing_status"].lower()
+    assert draft["audio_filename"] == "too-long.wav"
 
 
 def test_navigator_ui_uses_supplied_runtime_config(monkeypatch) -> None:

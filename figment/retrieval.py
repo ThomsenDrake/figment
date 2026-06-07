@@ -116,3 +116,24 @@ def search_protocol_cards(
         if results:
             return results
     return _memory_search(query, card_dir, capped_limit)
+
+
+def retrieval_source_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    sources: list[str] = []
+    card_sources: list[dict[str, str]] = []
+    for item in results:
+        source = str(item.get("source") or "unknown")
+        if source not in sources:
+            sources.append(source)
+        card_sources.append(
+            {
+                "card_id": str(item.get("card_id") or item.get("card", {}).get("card_id") or "unknown"),
+                "source": source,
+            }
+        )
+    primary_source = sources[0] if len(sources) == 1 else ("mixed" if sources else "none")
+    return {
+        "primary_source": primary_source,
+        "sources": sources,
+        "card_sources": card_sources,
+    }
