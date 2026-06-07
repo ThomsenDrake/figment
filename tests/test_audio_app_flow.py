@@ -457,15 +457,19 @@ def test_loading_demo_case_resets_audio_and_downstream_state() -> None:
     assert values[12] is None
     assert values[13] is None
     assert values[14] == {"red_flags": [], "protocol_urgency": "routine"}
-    assert values[15] == []
-    assert values[16] == ""
-    assert values[17] == {}
-    assert values[18] == ""
+    assert "PROTOCOL_URGENCY" in values[15]
+    assert values[16] == []
+    assert values[17] == ""
+    assert "Selected Protocol Card" in values[18]
     assert values[19] == {}
-    assert values[20] is None
-    assert values[21] == {}
-    assert values[22] is None
-    assert values[23] == {}
+    assert values[20] == ""
+    assert "Protocol Urgency" in values[21]
+    assert values[22] == {}
+    assert values[23] is None
+    assert "Run the navigator" in values[24]
+    assert values[25] == {}
+    assert values[26] is None
+    assert values[27] == {}
 
 
 def test_source_and_audio_changes_clear_stale_pipeline_outputs() -> None:
@@ -474,12 +478,16 @@ def test_source_and_audio_changes_clear_stale_pipeline_outputs() -> None:
     assert app._clear_source_outputs() == [
         None,
         {"red_flags": [], "protocol_urgency": "routine"},
+        app._risk_summary_html({"red_flags": [], "protocol_urgency": "routine"}),
         [],
         "",
+        app._protocol_results_html([]),
         {},
         "",
+        app._navigator_summary_html({}),
         {},
         None,
+        app._trace_audit_html({}),
         {},
         {},
     ]
@@ -487,12 +495,16 @@ def test_source_and_audio_changes_clear_stale_pipeline_outputs() -> None:
         None,
         None,
         {"red_flags": [], "protocol_urgency": "routine"},
+        app._risk_summary_html({"red_flags": [], "protocol_urgency": "routine"}),
         [],
         "",
+        app._protocol_results_html([]),
         {},
         "",
+        app._navigator_summary_html({}),
         {},
         None,
+        app._trace_audit_html({}),
         {},
         None,
         {},

@@ -29,3 +29,4 @@ tmp/
 scratch/
 .codex-workflows/runs/
 .playwright-cli/
+output/playwright/
