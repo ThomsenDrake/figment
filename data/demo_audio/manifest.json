@@ -1,0 +1,73 @@
+{
+  "cases": [
+    {
+      "audio_path": "data/demo_audio/case_1_dictated_intake.wav",
+      "case_id": "case_1",
+      "label": "Disaster clinic: pediatric dehydration",
+      "language": null,
+      "slug": "pediatric_dehydration",
+      "source_script": "Seven year old at a shelter clinic after flood cleanup. Child cannot keep fluids down, is lethargic, has a very dry mouth, and has no urine since morning. Temperature and blood pressure are missing. Supplies include oral rehydration solution, radio, and transport team.",
+      "transcript_path": "data/demo_audio/transcripts/case_1_pediatric_dehydration.voxtral.json",
+      "usage": {
+        "completion_tokens": 90,
+        "prompt_audio_seconds": 16,
+        "prompt_tokens": 6,
+        "prompt_tokens_details": {
+          "audio_tokens": 375,
+          "cached_tokens": 0
+        },
+        "total_tokens": 471
+      },
+      "voice_id": "148251ff-f7d0-4d88-b723-f7733925448b",
+      "voice_name": "Abi",
+      "voxtral_transcript": "Seven-year-old at a shelter clinic after flood cleanup. Child cannot keep fluids down, is lethargic, has a very dry mouth, and has no urine since morning. Temperature and blood pressure are missing. Supplies include oral rehydration solution, radio, and transport team."
+    },
+    {
+      "audio_path": "data/demo_audio/case_2_dictated_intake.wav",
+      "case_id": "case_2",
+      "label": "Disaster injury: wound infection",
+      "language": null,
+      "slug": "wound_infection",
+      "source_script": "Forty three year old at a mobile clinic with a leg cut from debris three days ago. The wound is getting worse with spreading redness, swelling, and foul drainage. Temperature is unknown. Supplies are clean dressings and radio.",
+      "transcript_path": "data/demo_audio/transcripts/case_2_wound_infection.voxtral.json",
+      "usage": {
+        "completion_tokens": 81,
+        "prompt_audio_seconds": 13,
+        "prompt_tokens": 6,
+        "prompt_tokens_details": {
+          "audio_tokens": 375,
+          "cached_tokens": 0
+        },
+        "total_tokens": 462
+      },
+      "voice_id": "c69964a6-ab8b-4f8a-9465-ec0925096ec8",
+      "voice_name": "Paul - Neutral",
+      "voxtral_transcript": "43-year-old at a mobile clinic with a leg cut from debris three days ago. The wound is getting worse with spreading redness, swelling, and foul drainage. Temperature is unknown. Supplies are clean dressings and radio."
+    },
+    {
+      "audio_path": "data/demo_audio/case_3_dictated_intake.wav",
+      "case_id": "case_3",
+      "label": "Rural clinic: pregnancy danger sign",
+      "language": null,
+      "slug": "pregnancy_danger_sign",
+      "source_script": "Twenty nine year old pregnant patient at a rural clinic with vaginal bleeding, severe headache, and dizziness. Blood pressure is not available. She reports a prenatal vitamin. Phone and transport contact are available.",
+      "transcript_path": "data/demo_audio/transcripts/case_3_pregnancy_danger_sign.voxtral.json",
+      "usage": {
+        "completion_tokens": 74,
+        "prompt_audio_seconds": 14,
+        "prompt_tokens": 6,
+        "prompt_tokens_details": {
+          "audio_tokens": 375,
+          "cached_tokens": 0
+        },
+        "total_tokens": 455
+      },
+      "voice_id": "5a271406-039d-46fe-835b-fbbb00eaf08d",
+      "voice_name": "Marie - Neutral",
+      "voxtral_transcript": "29-year-old pregnant patient at a rural clinic with vaginal bleeding, severe headache and dizziness. Blood pressure is not available. She reports a prenatal vitamin. Phone and transport contact are available."
+    }
+  ],
+  "generated_at": "2026-06-07T14:29:41.458602+00:00",
+  "transcription_model": "voxtral-mini-latest",
+  "tts_model": "voxtral-mini-tts-2603"
+}

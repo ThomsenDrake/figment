@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .config import FigmentConfig, load_config
@@ -62,6 +63,34 @@ def run_navigation(
         }
         card_ids.update(str(card_id) for card_id in output.get("source_cards", []))
     validation = validate_navigator_output(output, card_ids, floor, confirmed_intake=intake, rule_results=rule_results)
+    if not validation.passed and fallback_reason is None and config.model_backend != "canned":
+        try:
+            retry_output = client.generate_json(
+                _repair_prompt(prompt, output, validation.failures, floor),
+                {
+                    "intake": intake,
+                    "rule_results": rule_results,
+                    "retrieved_cards": retrieved,
+                    "urgency_floor": floor,
+                    "previous_output": output,
+                    "validation_failures": validation.failures,
+                },
+            )
+            retry_validation = validate_navigator_output(
+                retry_output,
+                card_ids,
+                floor,
+                confirmed_intake=intake,
+                rule_results=rule_results,
+            )
+            if retry_validation.passed:
+                output = retry_output
+                validation = retry_validation
+                events.append("navigator output repaired by hosted retry")
+            else:
+                events.append("navigator retry failed validation")
+        except ModelClientError:
+            events.append("navigator retry failed")
     if not validation.passed:
         output = canned_navigator_output(intake, rule_results, retrieved, floor)
         validation = validate_navigator_output(output, card_ids, floor, confirmed_intake=intake, rule_results=rule_results)
@@ -92,6 +121,27 @@ def run_navigation(
     if trace_path:
         write_trace(trace, trace_path)
     return output, trace
+
+
+def _repair_prompt(
+    original_prompt: str,
+    previous_output: dict[str, Any],
+    failures: list[str],
+    urgency_floor: str,
+) -> str:
+    repair_context = {
+        "deterministic_validation_failures": failures,
+        "urgency_floor": urgency_floor,
+        "previous_output": previous_output,
+    }
+    return (
+        f"{original_prompt}\n\n"
+        "Your previous JSON failed deterministic validation. Return corrected JSON only.\n"
+        "Keep protocol_urgency at or above the urgency_floor, cite only retrieved source_cards, "
+        "ground SBAR fields in confirmed intake/rules, and avoid diagnosis, prescription, dosing, "
+        "or autonomous routing language.\n\n"
+        f"REPAIR_CONTEXT:\n{json.dumps(repair_context, indent=2, sort_keys=True)}"
+    )
 
 
 def _audio_context_for_prompt(audio: dict[str, Any] | None) -> dict[str, Any] | None:

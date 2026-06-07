@@ -1,0 +1,46 @@
+{
+  "finish_reason": null,
+  "language": null,
+  "model": "voxtral-mini-latest",
+  "segments": [
+    {
+      "end": 6.9,
+      "speaker_id": null,
+      "start": 0.1,
+      "text": "29-year-old pregnant patient at a rural clinic with vaginal bleeding, severe headache and dizziness.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 9.3,
+      "speaker_id": null,
+      "start": 7.8,
+      "text": " Blood pressure is not available.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 11.6,
+      "speaker_id": null,
+      "start": 9.9,
+      "text": " She reports a prenatal vitamin.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 14.7,
+      "speaker_id": null,
+      "start": 12.3,
+      "text": " Phone and transport contact are available.",
+      "type": "transcription_segment"
+    }
+  ],
+  "text": "29-year-old pregnant patient at a rural clinic with vaginal bleeding, severe headache and dizziness. Blood pressure is not available. She reports a prenatal vitamin. Phone and transport contact are available.",
+  "usage": {
+    "completion_tokens": 74,
+    "prompt_audio_seconds": 14,
+    "prompt_tokens": 6,
+    "prompt_tokens_details": {
+      "audio_tokens": 375,
+      "cached_tokens": 0
+    },
+    "total_tokens": 455
+  }
+}

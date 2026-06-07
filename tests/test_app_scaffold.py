@@ -1,4 +1,5 @@
 import importlib
+from pathlib import Path
 
 import pytest
 
@@ -61,6 +62,55 @@ def test_config_uses_hosted_omni_api_model_id_when_secret_is_present(
     assert config.model_backend == "hosted_omni"
     assert config.nvidia_model_id == NVIDIA_OMNI_API_MODEL_ID
     assert config.active_model_id == NVIDIA_OMNI_API_MODEL_ID
+
+
+def test_hf_token_without_endpoint_does_not_select_hosted_omni(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+
+    config = FigmentConfig.from_env()
+
+    assert config.model_backend == "canned"
+    assert config.active_model_id == OMNI_MODEL_ID
+
+
+def test_hf_endpoint_selects_hosted_omni_with_hf_token(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    monkeypatch.setenv("HF_ENDPOINT_URL", "https://hf.example.test/v1")
+
+    config = FigmentConfig.from_env()
+
+    assert config.model_backend == "hosted_omni"
+    assert config.hf_endpoint_url == "https://hf.example.test/v1"
+
+
+def test_explicit_hosted_omni_nvidia_endpoint_requires_key() -> None:
+    with pytest.raises(ValueError, match="NVIDIA_API_KEY"):
+        FigmentConfig(model_backend="hosted_omni", nvidia_api_key="").validated()
+
+
+def test_demo_audio_examples_cover_committed_audio_assets() -> None:
+    app = importlib.import_module("app")
+
+    examples = app._demo_audio_examples()
+
+    assert len(examples) == 3
+    assert {Path(example[0]).name for example in examples} == {
+        "case_1_dictated_intake.wav",
+        "case_2_dictated_intake.wav",
+        "case_3_dictated_intake.wav",
+    }
+    assert all(Path(example[0]).exists() for example in examples)
+    assert all(example[1] == "" for example in examples)
 
 
 def test_config_gates_local_4b_parakeet_stack_with_local_asr(
@@ -461,6 +511,45 @@ def test_audio_drafts_are_non_authoritative_until_confirmed() -> None:
     assert confirmed_audio["confirmation_status"] == "confirmed"
     assert confirmed_intake["confirmed"] is True
     assert app.evaluate_red_flags(confirmed_intake)
+
+
+def test_run_case_uses_environment_config_when_not_supplied(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = importlib.import_module("app")
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "true")
+    monkeypatch.setenv("MODEL_BACKEND", "hosted_omni")
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-nvidia-key")
+    seen = {}
+
+    class FakeTrace:
+        validator_result = {"passed": True, "failures": []}
+
+        def to_dict(self) -> dict[str, object]:
+            return {"model_route": {"model_backend": seen["config"].model_backend}}
+
+    def fake_run_navigation(intake, rules, *, audio_draft=None, config=None, **_kwargs):
+        seen["config"] = config
+        return {"protocol_urgency": "routine", "source_cards": []}, FakeTrace()
+
+    monkeypatch.setattr(app, "run_navigation", fake_run_navigation)
+    monkeypatch.setattr(app, "render_sbar", lambda *_args, **_kwargs: "handoff")
+    intake = app.collect_intake(
+        setting="mobile clinic",
+        patient_age="52",
+        pregnancy_status="not_applicable",
+        chief_concern="wound concern",
+        symptoms="spreading redness",
+        vitals="unknown",
+        allergies="unknown",
+        medications="unknown",
+        available_supplies="dressings",
+        responder_note="Cut from debris.",
+    )
+
+    result = app.run_case(intake)
+
+    assert seen["config"].model_backend == "hosted_omni"
+    assert result["trace"]["model_route"]["model_backend"] == "hosted_omni"
 
 
 def test_app_import_and_blocks_smoke() -> None:

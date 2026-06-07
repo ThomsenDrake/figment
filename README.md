@@ -90,20 +90,23 @@ cp .env.example .env
 
 ### 1. Run the app with the hosted NVIDIA API
 
-Copy `.env.example` to `.env`, set `MODEL_BACKEND=hosted_omni`, and add `NVIDIA_API_KEY`. The hosted route uses the NVIDIA API Catalog OpenAI-compatible endpoint:
+Copy `.env.example` to `.env`, set the hosted model variables, and add `NVIDIA_API_KEY`. The hosted route uses the NVIDIA API Catalog OpenAI-compatible endpoint:
 
 ```dotenv
+FIGMENT_MODE=hosted
 MODEL_BACKEND=hosted_omni
 MODEL_STACK=omni_native
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
 NVIDIA_MODEL_ID=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 NVIDIA_API_KEY=nvapi-...
+AUDIO_BACKEND=omni_native
+ENABLE_AUDIO_INTAKE=true
 ```
 
 Then run:
 
 ```bash
-python app.py
+make run-hosted-demo PYTHON=.venv/bin/python
 ```
 
 If the hosted model is unavailable or returns invalid JSON, Figment falls back to the deterministic canned navigator output and still validates the result.
@@ -159,6 +162,7 @@ figment/
                         #   prompt_builder, validators, trace, sbar
   data/
     protocol_cards/     # 10 prototype cards (JSON)
+    demo_audio/         # three synthetic dictated-intake WAV clips for the demo
   scripts/              # build_fts now; generation/eval scripts later
   traces/               # exported demo traces
   docs/                 # field notes, model/dataset/safety cards, this plan
@@ -170,6 +174,7 @@ Available now:
 app.py                                        # Gradio app scaffold
 figment/                                      # protocol engine, model/audio adapters, trace/validators
 data/protocol_cards/                          # 10 prototype protocol cards
+data/demo_audio/                              # click-to-load hosted audio demo clips
 traces/                                       # regenerated demo traces
 tests/                                        # regression tests for safety, audio, rules, app smoke
 docs/figment-workback-plan.md                 # the full day-by-day build plan
@@ -241,6 +246,8 @@ Three canonical cases drive the demo:
 1. **Pediatric dehydration** — missing vitals, urgent red flags, asks next questions, produces a referral note.
 2. **Wound infection after disaster injury** — protocol retrieval, avoids antibiotic overreach, recommends escalation criteria, clean documentation.
 3. **Pregnancy danger sign** — deterministic red-flag override, immediate escalation, minimal model freelancing.
+
+The Intake tab includes click-to-load audio examples for all three cases when `data/demo_audio/*.wav` is present. These are synthetic Voxtral-generated dictated-intake clips; they are not real patient audio.
 
 ---
 

@@ -71,10 +71,8 @@ def test_hosted_omni_requires_nvidia_key_for_nvidia_endpoint(monkeypatch: Any) -
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    client = ModelClient(FigmentConfig(model_backend="hosted_omni", nvidia_api_key=""))
-
-    with pytest.raises(ModelClientError, match="NVIDIA_API_KEY"):
-        client.generate_json("Return JSON.", {})
+    with pytest.raises(ValueError, match="NVIDIA_API_KEY"):
+        FigmentConfig(model_backend="hosted_omni", nvidia_api_key="").validated()
 
 
 def test_hosted_omni_audio_draft_posts_audio_data_url(tmp_path: Path, monkeypatch: Any) -> None:

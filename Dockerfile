@@ -2,9 +2,8 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FIGMENT_MODE=canned \
+    FIGMENT_MODE=hosted \
     MODEL_STACK=omni_native \
-    MODEL_BACKEND=canned \
     AUDIO_BACKEND=none \
     ENABLE_AUDIO_INTAKE=false \
     ALLOW_LOCAL_ASR=false \

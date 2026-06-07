@@ -22,6 +22,60 @@ from .schemas import AudioDraft, AudioFieldSuggestion
 LOCAL_PARAKEET_AUDIO_BACKENDS = {"parakeet_nemo", "local_4b_parakeet"}
 LOCAL_PARAKEET_RUNTIME = "local_4b_parakeet"
 LOCAL_PARAKEET_PATH = "parakeet_rnnt_plus_text_nemotron"
+ALLOWED_AUDIO_SUGGESTION_FIELDS = {
+    "setting",
+    "patient_age",
+    "pregnancy_status",
+    "chief_concern",
+    "symptoms",
+    "vitals",
+    "allergies",
+    "medications",
+    "available_supplies",
+    "responder_note",
+}
+NUMBER_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+NON_INFORMATIVE_DRAFT_VALUES = {
+    "",
+    "n/a",
+    "na",
+    "not answerable",
+    "not available",
+    "not mentioned",
+    "not provided",
+    "not specified",
+    "unable to determine",
+    "unclear",
+}
 
 RED_FLAG_HINTS = (
     "chest pain",
@@ -86,33 +140,31 @@ def draft_audio_intake(
     if _has_provider_payload(provider_payload):
         transcript = _clean_text(provider_payload.get("transcript", transcript))
         suggestions = _provider_suggestions(provider_payload)
+        if not suggestions and transcript:
+            suggestions = _suggest_fields(transcript)
+        if not transcript and not suggestions:
+            return _unprocessed_audio_draft(
+                "Audio provider payload did not include a transcript or valid field suggestions.",
+                missing_field="transcript_or_valid_provider_suggestions",
+            )
         missing = _string_list(provider_payload.get("missing_or_unclear_fields", []))
-        mentions = _string_list(provider_payload.get("provisional_red_flag_mentions", []))
+        if not missing:
+            missing = _missing_fields(suggestions, transcript)
+        mentions = _merged_strings(
+            _string_list(provider_payload.get("provisional_red_flag_mentions", [])),
+            _red_flag_mentions(transcript),
+        )
     elif transcript:
         suggestions = _suggest_fields(transcript)
         missing = _missing_fields(suggestions, transcript)
-        mentions = [hint for hint in RED_FLAG_HINTS if hint in transcript.lower()]
+        mentions = _red_flag_mentions(transcript)
     elif config.audio_backend == "canned" and not audio_file_received:
         transcript = CANNED_TRANSCRIPTS.get(case_id, CANNED_TRANSCRIPTS["pediatric_dehydration"])
         suggestions = _suggest_fields(transcript)
         missing = _missing_fields(suggestions, transcript)
-        mentions = [hint for hint in RED_FLAG_HINTS if hint in transcript.lower()]
+        mentions = _red_flag_mentions(transcript)
     else:
-        draft = AudioDraft(
-            audio_intake_path="audio_received_needs_transcript_or_model",
-            audio_model_id=None,
-            field_fill_model_id=None,
-            audio_runtime="unprocessed_audio",
-            transcript="",
-            suggested_fields=[],
-            missing_or_unclear_fields=["transcript_or_provider_payload"],
-            provisional_red_flag_mentions=[],
-            confirmed_intake_required=False,
-            confirmation_status="confirmed",
-            raw_audio_stored=False,
-        ).to_dict()
-        draft["processing_status"] = "Audio received but needs transcript/model support before field drafting."
-        return draft
+        return _unprocessed_audio_draft("Audio received but needs transcript/model support before field drafting.")
 
     audio_model_id = None
     field_fill_model_id = None
@@ -139,6 +191,28 @@ def draft_audio_intake(
         confirmation_status="unconfirmed",
         raw_audio_stored=False,
     ).to_dict()
+
+
+def _unprocessed_audio_draft(
+    processing_status: str,
+    *,
+    missing_field: str = "transcript_or_provider_payload",
+) -> dict[str, Any]:
+    draft = AudioDraft(
+        audio_intake_path="audio_received_needs_transcript_or_model",
+        audio_model_id=None,
+        field_fill_model_id=None,
+        audio_runtime="unprocessed_audio",
+        transcript="",
+        suggested_fields=[],
+        missing_or_unclear_fields=[missing_field],
+        provisional_red_flag_mentions=[],
+        confirmed_intake_required=False,
+        confirmation_status="confirmed",
+        raw_audio_stored=False,
+    ).to_dict()
+    draft["processing_status"] = processing_status
+    return draft
 
 
 def confirm_audio_draft(
@@ -189,10 +263,16 @@ def _provider_suggestions(payload: dict[str, Any]) -> list[AudioFieldSuggestion]
     for item in payload.get("suggested_fields", []):
         if not isinstance(item, dict) or not item.get("field"):
             continue
+        field = _clean_text(item.get("field", ""))
+        if field not in ALLOWED_AUDIO_SUGGESTION_FIELDS:
+            continue
+        draft_value = _clean_text(item.get("draft_value", ""))
+        if not _is_informative_draft_value(draft_value):
+            continue
         suggestions.append(
             AudioFieldSuggestion(
-                field=str(item["field"]),
-                draft_value=_clean_text(item.get("draft_value", "")),
+                field=field,
+                draft_value=draft_value,
                 source_snippet=_clean_text(item.get("source_snippet", "")),
                 source_timecode=_clean_text(item.get("source_timecode", "")),
             )
@@ -224,6 +304,31 @@ def _string_list(value: Any) -> list[str]:
 
 def _clean_text(value: Any) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _is_informative_draft_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in NON_INFORMATIVE_DRAFT_VALUES:
+        return False
+    return not normalized.startswith("provisional intake draft")
+
+
+def _red_flag_mentions(transcript: str) -> list[str]:
+    lower = transcript.lower()
+    return [hint for hint in RED_FLAG_HINTS if hint in lower]
+
+
+def _merged_strings(*values: list[str]) -> list[str]:
+    merged = []
+    seen = set()
+    for value_list in values:
+        for value in value_list:
+            normalized = value.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(value)
+    return merged
 
 
 def _is_local_parakeet_backend(config: FigmentConfig) -> bool:
@@ -258,8 +363,11 @@ def _suggest_fields(transcript: str) -> list[AudioFieldSuggestion]:
         suggestions.append(AudioFieldSuggestion(field="chief_concern", draft_value="pregnancy danger sign concern", source_snippet=_snippet(text, "bleeding")))
         suggestions.append(AudioFieldSuggestion(field="pregnancy_status", draft_value="pregnant", source_snippet=_snippet(text, "preg")))
     elif "watery stool" in lower or "no urine" in lower:
-        suggestions.append(AudioFieldSuggestion(field="patient_age", draft_value="4 years", source_snippet=_snippet(text, "four")))
-        suggestions.append(AudioFieldSuggestion(field="chief_concern", draft_value="possible dehydration concern after repeated watery stool", source_snippet=_snippet(text, "stool")))
+        age = _age_from_transcript(text) or "child"
+        concern = "possible dehydration concern after repeated watery stool" if "watery stool" in lower else "possible dehydration concern"
+        concern_term = "stool" if "watery stool" in lower else "no urine"
+        suggestions.append(AudioFieldSuggestion(field="patient_age", draft_value=age, source_snippet=_snippet(text, "year")))
+        suggestions.append(AudioFieldSuggestion(field="chief_concern", draft_value=concern, source_snippet=_snippet(text, concern_term)))
         suggestions.append(AudioFieldSuggestion(field="symptoms", draft_value="very tired, dry mouth, no urine since morning", source_snippet=_snippet(text, "no urine")))
     if "trouble breathing" in lower or "shortness of breath" in lower:
         suggestions.append(AudioFieldSuggestion(field="symptoms", draft_value="trouble breathing", source_snippet=_snippet(text, "breath")))
@@ -290,3 +398,24 @@ def _snippet(text: str, term: str) -> str:
     start = max(0, match.start() - 40)
     end = min(len(text), match.end() + 40)
     return text[start:end]
+
+
+def _age_from_transcript(text: str) -> str:
+    match = re.search(r"\b(\d{1,3})\s*[- ]?year[- ]old\b", text, flags=re.IGNORECASE)
+    if match:
+        return f"{match.group(1)} years"
+    match = re.search(r"\b([a-z]+(?:[- ][a-z]+)?)\s*[- ]?year[- ]old\b", text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    value = _number_words_value(match.group(1).lower())
+    return f"{value} years" if value else ""
+
+
+def _number_words_value(value: str) -> int:
+    parts = value.replace("-", " ").split()
+    total = 0
+    for part in parts:
+        if part not in NUMBER_WORDS:
+            return 0
+        total += NUMBER_WORDS[part]
+    return total

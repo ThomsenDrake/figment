@@ -1,0 +1,46 @@
+{
+  "finish_reason": null,
+  "language": null,
+  "model": "voxtral-mini-latest",
+  "segments": [
+    {
+      "end": 2.9,
+      "speaker_id": null,
+      "start": 0.1,
+      "text": "Seven-year-old at a shelter clinic after flood cleanup.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 9.0,
+      "speaker_id": null,
+      "start": 3.2,
+      "text": " Child cannot keep fluids down, is lethargic, has a very dry mouth, and has no urine since morning.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 11.2,
+      "speaker_id": null,
+      "start": 9.4,
+      "text": " Temperature and blood pressure are missing.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 16.3,
+      "speaker_id": null,
+      "start": 11.6,
+      "text": " Supplies include oral rehydration solution, radio, and transport team.",
+      "type": "transcription_segment"
+    }
+  ],
+  "text": "Seven-year-old at a shelter clinic after flood cleanup. Child cannot keep fluids down, is lethargic, has a very dry mouth, and has no urine since morning. Temperature and blood pressure are missing. Supplies include oral rehydration solution, radio, and transport team.",
+  "usage": {
+    "completion_tokens": 90,
+    "prompt_audio_seconds": 16,
+    "prompt_tokens": 6,
+    "prompt_tokens_details": {
+      "audio_tokens": 375,
+      "cached_tokens": 0
+    },
+    "total_tokens": 471
+  }
+}

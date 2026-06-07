@@ -39,7 +39,7 @@ def _default_backend_for_env(
         return "llama_cpp"
     if mode == "canned":
         return "canned"
-    if nvidia_api_key or hf_token or omni_endpoint_url or hf_endpoint_url:
+    if nvidia_api_key or omni_endpoint_url or hf_endpoint_url:
         return "hosted_omni"
     return "canned"
 
@@ -128,8 +128,12 @@ class FigmentConfig:
             errors.append("AUDIO_BACKEND=parakeet_nemo requires ALLOW_LOCAL_ASR=true")
         if self.audio_backend == "parakeet_nemo" and self.model_stack != "local_4b_parakeet":
             errors.append("AUDIO_BACKEND=parakeet_nemo requires MODEL_STACK=local_4b_parakeet")
-        if self.model_backend == "hosted_omni" and not (self.nvidia_base_url or self.omni_endpoint_url or self.hf_endpoint_url):
-            errors.append("hosted_omni requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
+        if self.model_backend == "hosted_omni":
+            hosted_endpoint = self.omni_endpoint_url or self.hf_endpoint_url or self.nvidia_base_url
+            if not hosted_endpoint:
+                errors.append("hosted_omni requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
+            elif _is_nvidia_endpoint(hosted_endpoint) and not self.nvidia_api_key:
+                errors.append("hosted_omni with NVIDIA endpoint requires NVIDIA_API_KEY")
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -183,3 +187,7 @@ def _load_simple_dotenv(path: Path) -> None:
         if not key or key in os.environ:
             continue
         os.environ[key] = value.strip().strip("'\"")
+
+
+def _is_nvidia_endpoint(url: str) -> bool:
+    return "integrate.api.nvidia.com" in url.lower()

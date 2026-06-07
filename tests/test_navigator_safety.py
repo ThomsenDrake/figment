@@ -44,6 +44,63 @@ class FailingTransportModelClient:
         raise navigator.ModelClientError("transport failed")
 
 
+class RepairingModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        if type(self).calls == 1:
+            return {
+                "protocol_urgency": "routine",
+                "candidate_protocol_pathways": [
+                    {
+                        "card_id": "CHEST-PAIN-ESCALATION-v1",
+                        "reason_relevant": "Chest pain was reported.",
+                    }
+                ],
+                "missing_info_to_collect": [],
+                "next_observations_to_collect": [],
+                "conflicts_or_uncertainties": [],
+                "responder_checklist": ["Escalate per cited local protocol."],
+                "do_not_do": ["Do not diagnose."],
+                "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+                "handoff_note_sbar": {
+                    "situation": "Chest pain",
+                    "background": "Synthetic case",
+                    "assessment_observations_only": "Pain reported",
+                    "handoff_request": "Escalate per protocol",
+                },
+                "responder_plain_language_script": "",
+                "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
+            }
+        return {
+            "protocol_urgency": "emergency",
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "CHEST-PAIN-ESCALATION-v1",
+                    "reason_relevant": "Chest pain with shortness of breath was reported.",
+                }
+            ],
+            "missing_info_to_collect": ["repeat vital signs"],
+            "next_observations_to_collect": ["work of breathing", "level of alertness"],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Escalate per cited local protocol."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain",
+                "background": "Adult reports chest pain after cleanup work.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported.",
+                "handoff_request": "Escalate per protocol",
+            },
+            "responder_plain_language_script": "",
+            "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
+        }
+
+
 def _confirmed_chest_pain_intake() -> dict[str, Any]:
     return {
         "setting": "mobile clinic",
@@ -124,7 +181,7 @@ def test_run_navigation_returns_safe_fallback_for_invalid_model_output(monkeypat
     output, trace = navigator.run_navigation(
         _confirmed_chest_pain_intake(),
         _emergency_chest_pain_rules(),
-        config=FigmentConfig(model_backend="hosted_omni"),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
         retrieved_cards=_retrieved_chest_pain_cards(),
     )
 
@@ -144,7 +201,7 @@ def test_run_navigation_labels_transport_fallback_in_trace(monkeypatch) -> None:
     output, trace = navigator.run_navigation(
         _confirmed_chest_pain_intake(),
         _emergency_chest_pain_rules(),
-        config=FigmentConfig(model_backend="hosted_omni"),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
         retrieved_cards=_retrieved_chest_pain_cards(),
     )
 
@@ -152,6 +209,25 @@ def test_run_navigation_labels_transport_fallback_in_trace(monkeypatch) -> None:
     assert trace.model_route["model_backend"] == "hosted_omni"
     assert trace.model_route["fallback_tier"] == "canned"
     assert any("model backend failed" in event for event in trace.events)
+
+
+def test_run_navigation_retries_hosted_output_repair_before_fallback(monkeypatch) -> None:
+    RepairingModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", RepairingModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    assert RepairingModelClient.calls == 2
+    assert output["protocol_urgency"] == "emergency"
+    assert trace.validator_result["passed"] is True
+    assert trace.model_route["fallback_tier"] == "configured"
+    assert trace.model_route["fallback_reason"] is None
+    assert any("repaired by hosted retry" in event for event in trace.events)
 
 
 def test_run_navigation_scrubs_audio_trace_payload(tmp_path: Path) -> None:

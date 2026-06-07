@@ -23,11 +23,13 @@ AUDIO_DRAFT_PROMPT = """Transcribe this responder audio and return ONLY JSON wit
 {
   "transcript": "verbatim or lightly normalized transcript",
   "suggested_fields": [
-    {"field": "chief_concern|symptoms|vitals|patient_age|pregnancy_status|allergies|medications|available_supplies|responder_note", "draft_value": "", "source_snippet": "", "source_timecode": ""}
+    {"field": "one allowed field name", "draft_value": "", "source_snippet": "", "source_timecode": ""}
   ],
   "missing_or_unclear_fields": [],
   "provisional_red_flag_mentions": []
 }
+Allowed field names are: setting, patient_age, pregnancy_status, chief_concern, symptoms, vitals, allergies, medications, available_supplies, responder_note.
+Each suggested_fields item must use exactly one allowed field name, not a pipe-delimited list.
 The output is a provisional intake draft for a trained responder. Do not diagnose, prescribe, or decide urgency. Do not include raw audio data."""
 
 

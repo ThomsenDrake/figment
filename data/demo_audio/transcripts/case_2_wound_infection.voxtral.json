@@ -1,0 +1,46 @@
+{
+  "finish_reason": null,
+  "language": null,
+  "model": "voxtral-mini-latest",
+  "segments": [
+    {
+      "end": 4.4,
+      "speaker_id": null,
+      "start": 0.2,
+      "text": "43-year-old at a mobile clinic with a leg cut from debris three days ago.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 9.3,
+      "speaker_id": null,
+      "start": 5.3,
+      "text": " The wound is getting worse with spreading redness, swelling, and foul drainage.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 11.0,
+      "speaker_id": null,
+      "start": 9.9,
+      "text": " Temperature is unknown.",
+      "type": "transcription_segment"
+    },
+    {
+      "end": 13.3,
+      "speaker_id": null,
+      "start": 11.4,
+      "text": " Supplies are clean dressings and radio.",
+      "type": "transcription_segment"
+    }
+  ],
+  "text": "43-year-old at a mobile clinic with a leg cut from debris three days ago. The wound is getting worse with spreading redness, swelling, and foul drainage. Temperature is unknown. Supplies are clean dressings and radio.",
+  "usage": {
+    "completion_tokens": 81,
+    "prompt_audio_seconds": 13,
+    "prompt_tokens": 6,
+    "prompt_tokens_details": {
+      "audio_tokens": 375,
+      "cached_tokens": 0
+    },
+    "total_tokens": 462
+  }
+}

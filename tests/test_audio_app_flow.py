@@ -7,6 +7,7 @@ def test_hosted_omni_provider_payload_becomes_unconfirmed_audio_draft() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(
         model_backend="hosted_omni",
+        nvidia_api_key="test-nvidia-key",
         enable_audio_intake=True,
         audio_backend="omni_native",
     ).validated()
@@ -48,10 +49,118 @@ def test_hosted_omni_provider_payload_becomes_unconfirmed_audio_draft() -> None:
     ]
 
 
+def test_hosted_omni_provider_payload_with_invalid_field_names_falls_back_to_transcript_suggestions() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        nvidia_api_key="test-nvidia-key",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+    ).validated()
+    provider_payload = {
+        "transcript": (
+            "Seven-year-old at a shelter clinic after flood cleanup. Child cannot keep fluids down, "
+            "is lethargic, has a very dry mouth, and has no urine since morning."
+        ),
+        "suggested_fields": [
+            {
+                "field": "chief_concern|symptoms|vitals|patient_age|pregnancy_status|allergies|medications|available_supplies|responder_note",
+                "draft_value": "lethargic, dry mouth, no urine",
+                "source_snippet": "lethargic, dry mouth, no urine",
+            }
+        ],
+        "provisional_red_flag_mentions": ["lethargic", "no urine"],
+    }
+
+    draft = app.draft_audio_intake(config=config, provider_payload=provider_payload)
+    fields = {suggestion["field"] for suggestion in draft["suggested_fields"]}
+
+    assert "chief_concern|symptoms|vitals|patient_age|pregnancy_status|allergies|medications|available_supplies|responder_note" not in fields
+    assert {"responder_note", "patient_age", "chief_concern", "symptoms"}.issubset(fields)
+    assert next(item for item in draft["suggested_fields"] if item["field"] == "patient_age")["draft_value"] == "7 years"
+
+
+def test_hosted_omni_provider_payload_without_transcript_or_valid_suggestions_fails_closed() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        nvidia_api_key="test-nvidia-key",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+    ).validated()
+    provider_payload = {
+        "suggested_fields": [
+            {
+                "field": "chief_concern|symptoms",
+                "draft_value": "chest pain",
+                "source_snippet": "chest pain",
+            }
+        ]
+    }
+
+    draft = app.draft_audio_intake(config=config, provider_payload=provider_payload)
+
+    assert draft["audio_intake_path"] == "audio_received_needs_transcript_or_model"
+    assert draft["audio_runtime"] == "unprocessed_audio"
+    assert draft["transcript"] == ""
+    assert draft["suggested_fields"] == []
+    assert draft["confirmed_intake_required"] is False
+    assert draft["confirmation_status"] == "confirmed"
+    assert draft["missing_or_unclear_fields"] == ["transcript_or_valid_provider_suggestions"]
+    assert "valid field suggestions" in draft["processing_status"].lower()
+
+
+def test_hosted_omni_provider_payload_drops_non_informative_field_values_and_preserves_red_flag_mentions() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        nvidia_api_key="test-nvidia-key",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+    ).validated()
+    provider_payload = {
+        "transcript": (
+            "Seven-year-old at a shelter clinic after flood cleanup. Child cannot keep fluids down, "
+            "is lethargic, has a very dry mouth, and has no urine since morning."
+        ),
+        "suggested_fields": [
+            {
+                "field": "symptoms",
+                "draft_value": "cannot keep fluids down, lethargic, very dry mouth, no urine since morning",
+                "source_snippet": "cannot keep fluids down, lethargic",
+            },
+            {
+                "field": "allergies",
+                "draft_value": "Not answerable",
+                "source_snippet": "",
+            },
+            {
+                "field": "medications",
+                "draft_value": "not provided",
+                "source_snippet": "",
+            },
+            {
+                "field": "responder_note",
+                "draft_value": "Provisional intake draft for trained responder",
+                "source_snippet": "",
+            },
+        ],
+        "missing_or_unclear_fields": [],
+        "provisional_red_flag_mentions": [],
+    }
+
+    draft = app.draft_audio_intake(config=config, provider_payload=provider_payload)
+
+    assert {item["field"] for item in draft["suggested_fields"]} == {"symptoms"}
+    assert set(draft["missing_or_unclear_fields"]) >= {"allergies", "medications"}
+    assert set(draft["provisional_red_flag_mentions"]) >= {"lethargic", "no urine"}
+
+
 def test_manual_edit_wins_over_hosted_omni_audio_draft_on_confirmation() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(
         model_backend="hosted_omni",
+        nvidia_api_key="test-nvidia-key",
         enable_audio_intake=True,
         audio_backend="omni_native",
     ).validated()
@@ -134,6 +243,7 @@ def test_uploaded_audio_uses_hosted_omni_provider_when_enabled(tmp_path, monkeyp
     assert draft["confirmation_status"] == "unconfirmed"
     assert draft["audio_filename"] == "field-note.wav"
     assert draft["raw_audio_stored"] is False
+    assert "not written to figment traces" in draft["audio_retention_note"].lower()
 
 
 def test_hosted_omni_audio_failure_fails_closed(tmp_path, monkeypatch) -> None:
@@ -164,6 +274,7 @@ def test_hosted_omni_audio_failure_fails_closed(tmp_path, monkeypatch) -> None:
     assert "hosted omni audio draft failed" in draft["processing_status"].lower()
     assert draft["audio_filename"] == "field-note.wav"
     assert draft["raw_audio_stored"] is False
+    assert "not written to figment traces" in draft["audio_retention_note"].lower()
 
 
 def test_local_parakeet_path_uses_local_4b_runtime_label_when_gated() -> None:
@@ -333,6 +444,59 @@ def test_apply_audio_draft_prefills_empty_fields_without_confirming() -> None:
     assert fields[3] == "chest pain"
     assert audio_json["confirmation_status"] == "unconfirmed"
     assert audio_state is audio_json
+
+
+def test_loading_demo_case_resets_audio_and_downstream_state() -> None:
+    app = importlib.import_module("app")
+
+    values = app._load_demo_case_and_reset("Rural clinic: pregnancy danger sign")
+
+    assert values[:10] == app._load_demo_case("Rural clinic: pregnancy danger sign")
+    assert values[10] is None
+    assert values[11] == ""
+    assert values[12] is None
+    assert values[13] is None
+    assert values[14] == {"red_flags": [], "protocol_urgency": "routine"}
+    assert values[15] == []
+    assert values[16] == ""
+    assert values[17] == {}
+    assert values[18] == ""
+    assert values[19] == {}
+    assert values[20] is None
+    assert values[21] == {}
+    assert values[22] is None
+    assert values[23] == {}
+
+
+def test_source_and_audio_changes_clear_stale_pipeline_outputs() -> None:
+    app = importlib.import_module("app")
+
+    assert app._clear_source_outputs() == [
+        None,
+        {"red_flags": [], "protocol_urgency": "routine"},
+        [],
+        "",
+        {},
+        "",
+        {},
+        None,
+        {},
+        {},
+    ]
+    assert app._clear_audio_outputs() == [
+        None,
+        None,
+        {"red_flags": [], "protocol_urgency": "routine"},
+        [],
+        "",
+        {},
+        "",
+        {},
+        None,
+        {},
+        None,
+        {},
+    ]
 
 
 def test_uploaded_audio_without_transcript_or_payload_is_not_fabricated_as_omni() -> None:

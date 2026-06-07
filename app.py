@@ -30,6 +30,13 @@ TAB_TITLES = [
     "Trace",
 ]
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEMO_AUDIO_FILENAMES = (
+    "case_1_dictated_intake.wav",
+    "case_2_dictated_intake.wav",
+    "case_3_dictated_intake.wav",
+)
+
 
 DEMO_CASES: dict[str, dict[str, str]] = {
     "Disaster clinic: pediatric dehydration": {
@@ -136,6 +143,10 @@ def draft_audio_intake(
         draft["audio_file_received"] = True
         draft["audio_filename"] = Path(audio_file).name
         draft["raw_audio_stored"] = False
+        draft["audio_retention_note"] = (
+            "Original clip bytes are not written to Figment traces; Gradio may keep upload/session files "
+            "while the app is running, and committed demo clips stay on disk."
+        )
     if provider_error and draft.get("audio_intake_path") == "audio_received_needs_transcript_or_model":
         draft["processing_status"] = provider_error
     return draft
@@ -155,7 +166,8 @@ def confirm_audio_draft(
 def run_case(intake: dict[str, Any], config: FigmentConfig | None = None, audio_draft: dict[str, Any] | None = None) -> dict[str, Any]:
     confirmed = confirm_intake(intake, audio_draft=audio_draft)
     rules = evaluate_red_flags(confirmed)
-    output, trace = run_navigation(confirmed, rules, audio_draft=audio_draft, config=config or FigmentConfig().validated())
+    runtime_config = (config or load_config()).validated()
+    output, trace = run_navigation(confirmed, rules, audio_draft=audio_draft, config=runtime_config)
     evaluation = evaluate_rules(confirmed)
     return {
         "intake": confirmed,
@@ -210,6 +222,8 @@ def build_app(config: FigmentConfig | None = None):
                 note = gr.Textbox(label="Responder note", lines=4)
                 audio_clip = gr.Audio(label="Audio intake clip", sources=["microphone", "upload"], type="filepath")
                 transcript = gr.Textbox(label="Dictated intake transcript", lines=3)
+                if examples := _demo_audio_examples():
+                    gr.Examples(examples=examples, inputs=[audio_clip, transcript], label="Demo audio clips")
                 draft_btn = gr.Button("Draft Audio Fields")
                 audio_json = gr.JSON(label="Audio draft")
                 apply_audio = gr.Button("Apply Audio Draft")
@@ -236,13 +250,66 @@ def build_app(config: FigmentConfig | None = None):
                 trace_file = gr.File(label="Trace download", interactive=False)
 
         fields = [setting, patient_age, pregnancy_status, chief_concern, symptoms, vitals, allergies, medications, supplies, note]
-        load_demo.click(_load_demo_case, inputs=[demo_case], outputs=fields)
+        source_outputs = [
+            intake_json,
+            risk_json,
+            guidance_json,
+            guidance_evidence,
+            output_json,
+            sbar_text,
+            trace_json,
+            trace_file,
+            intake_state,
+            trace_state,
+        ]
+        audio_source_outputs = [
+            audio_json,
+            intake_json,
+            risk_json,
+            guidance_json,
+            guidance_evidence,
+            output_json,
+            sbar_text,
+            trace_json,
+            trace_file,
+            intake_state,
+            audio_state,
+            trace_state,
+        ]
+        load_demo.click(
+            _load_demo_case_and_reset,
+            inputs=[demo_case],
+            outputs=[
+                *fields,
+                audio_clip,
+                transcript,
+                audio_json,
+                intake_json,
+                risk_json,
+                guidance_json,
+                guidance_evidence,
+                output_json,
+                sbar_text,
+                trace_json,
+                trace_file,
+                intake_state,
+                audio_state,
+                trace_state,
+            ],
+        )
         draft_btn.click(
             lambda audio_file, transcript_text: _draft_audio_ui(audio_file, transcript_text, config=config),
             inputs=[audio_clip, transcript],
             outputs=[audio_json],
-        ).then(lambda x: x, inputs=[audio_json], outputs=[audio_state])
-        apply_audio.click(_apply_audio_draft_ui, inputs=[*fields, audio_state], outputs=[*fields, audio_json, audio_state])
+        ).then(lambda x: x, inputs=[audio_json], outputs=[audio_state]).then(_clear_source_outputs, outputs=source_outputs)
+        apply_audio.click(_apply_audio_draft_ui, inputs=[*fields, audio_state], outputs=[*fields, audio_json, audio_state]).then(
+            _clear_source_outputs,
+            outputs=source_outputs,
+        )
+        for source in fields:
+            source.change(_clear_source_outputs, outputs=source_outputs)
+        audio_clip.change(_clear_audio_outputs, outputs=audio_source_outputs)
+        transcript.change(_clear_audio_outputs, outputs=audio_source_outputs)
         confirm_btn.click(_confirm_ui_intake, inputs=[*fields, audio_state], outputs=[intake_json, intake_state, audio_state])
         risk_btn.click(_risk_ui, inputs=[intake_state], outputs=[risk_json])
         retrieve_btn.click(_retrieve_with_evidence_ui, inputs=[intake_state], outputs=[guidance_json, guidance_evidence])
@@ -261,6 +328,15 @@ def _status_text(config: FigmentConfig) -> str:
     return f"`MODEL_STACK={config.model_stack}` | `MODEL_BACKEND={config.model_backend}` | audio {audio}"
 
 
+def _demo_audio_examples() -> list[list[str]]:
+    examples = []
+    for filename in DEMO_AUDIO_FILENAMES:
+        path = PROJECT_ROOT / "data" / "demo_audio" / filename
+        if path.exists():
+            examples.append([str(path), ""])
+    return examples
+
+
 def _load_demo_case(name: str) -> list[str]:
     case = DEMO_CASES.get(name or "", next(iter(DEMO_CASES.values())))
     return [
@@ -274,6 +350,62 @@ def _load_demo_case(name: str) -> list[str]:
         case["medications"],
         case["available_supplies"],
         case["responder_note"],
+    ]
+
+
+def _load_demo_case_and_reset(name: str) -> list[Any]:
+    return [
+        *_load_demo_case(name),
+        None,
+        "",
+        None,
+        None,
+        _empty_risk_result(),
+        [],
+        "",
+        {},
+        "",
+        {},
+        None,
+        {},
+        None,
+        {},
+    ]
+
+
+def _empty_risk_result() -> dict[str, Any]:
+    return {"red_flags": [], "protocol_urgency": "routine"}
+
+
+def _clear_source_outputs() -> list[Any]:
+    return [
+        None,
+        _empty_risk_result(),
+        [],
+        "",
+        {},
+        "",
+        {},
+        None,
+        {},
+        {},
+    ]
+
+
+def _clear_audio_outputs() -> list[Any]:
+    return [
+        None,
+        None,
+        _empty_risk_result(),
+        [],
+        "",
+        {},
+        "",
+        {},
+        None,
+        {},
+        None,
+        {},
     ]
 
 
@@ -330,7 +462,7 @@ def _confirm_ui_intake(*values: Any) -> tuple[dict[str, Any], dict[str, Any], di
 
 def _risk_ui(intake: dict[str, Any]) -> dict[str, Any]:
     if not intake:
-        return {"red_flags": [], "protocol_urgency": "routine"}
+        return _empty_risk_result()
     rules = evaluate_red_flags(intake)
     return {"red_flags": rules, "protocol_urgency": urgency_floor_from_rules(rules)}
 
