@@ -219,17 +219,28 @@ def build_app(config: FigmentConfig | None = None):
                                 load_demo = gr.Button("Load", scale=1)
                             gr.HTML(_demo_case_pills_html())
 
-                            gr.HTML(_section_header_html("2. Omni audio intake", "Audio only drafts editable fields. Manual entries and edits always win."))
+                            gr.HTML(
+                                _section_header_html(
+                                    "2. Live Omni audio ingest",
+                                    "Record the responder's live dictation first. Use file upload or canned clips only when a microphone is unavailable.",
+                                )
+                            )
                             with gr.Row():
                                 with gr.Column(scale=3):
-                                    audio_clip = gr.Audio(label="Audio intake clip", sources=["microphone", "upload"], type="filepath")
+                                    audio_clip = gr.Audio(label="Live audio intake", sources=["microphone", "upload"], type="filepath")
                                 with gr.Column(scale=2):
                                     draft_btn = gr.Button("Draft Audio Fields", elem_classes=["primary"])
                                     apply_audio = gr.Button("Apply Audio Draft")
-                                    gr.HTML('<span class="figment-chip amber">Confirm before rules run</span>')
+                                    gr.HTML('<span class="figment-chip green">Live mic primary</span> <span class="figment-chip amber">Confirm before rules run</span>')
                             transcript = gr.Textbox(label="Dictated intake transcript", lines=3)
                             if examples := _demo_audio_examples():
-                                gr.Examples(examples=examples, inputs=[audio_clip, transcript], label="Demo audio clips")
+                                with gr.Accordion("Backup: upload/test audio clips", open=False):
+                                    gr.HTML(
+                                        '<div class="figment-section-subtitle">'
+                                        "Use these only for testing, browser microphone failures, or repeatable demo fallback."
+                                        "</div>"
+                                    )
+                                    gr.Examples(examples=examples, inputs=[audio_clip, transcript], label="Backup demo clips")
 
                             gr.HTML(_section_header_html("3. Confirmed intake", "Protocol rules and navigation run only after this intake is confirmed."))
                             with gr.Row():
