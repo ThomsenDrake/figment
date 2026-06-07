@@ -9,9 +9,19 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .config import FigmentConfig, OMNI_MODEL_ID, STRETCH_AUDIO_MODEL_ID, STRETCH_TEXT_MODEL_ID, load_config
+from .config import (
+    FigmentConfig,
+    NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
+    OMNI_MODEL_ID,
+    PARAKEET_ASR_MODEL_ID,
+    load_config,
+)
 from .schemas import AudioDraft, AudioFieldSuggestion
 
+
+LOCAL_PARAKEET_AUDIO_BACKENDS = {"parakeet_nemo", "local_4b_parakeet"}
+LOCAL_PARAKEET_RUNTIME = "local_4b_parakeet"
+LOCAL_PARAKEET_PATH = "parakeet_rnnt_plus_text_nemotron"
 
 RED_FLAG_HINTS = (
     "chest pain",
@@ -53,8 +63,8 @@ def draft_audio_intake(
     audio_file_received: bool = False,
 ) -> dict[str, Any]:
     config = (config or load_config()).validated()
-    if config.audio_backend == "parakeet_nemo" and not config.allow_stretch_stack:
-        raise ValueError("Parakeet stretch path requires ALLOW_STRETCH_STACK=true")
+    if _is_local_parakeet_backend(config) and not _local_asr_allowed(config):
+        raise ValueError("Local Parakeet path requires ALLOW_LOCAL_ASR=true")
 
     audio_enabled = config.enable_audio_intake and config.audio_backend != "none"
     if not audio_enabled:
@@ -72,12 +82,12 @@ def draft_audio_intake(
             raw_audio_stored=False,
         ).to_dict()
 
-    transcript = transcript.strip()
-    if provider_payload is not None:
-        transcript = str(provider_payload.get("transcript", transcript))
+    transcript = _clean_text(transcript)
+    if _has_provider_payload(provider_payload):
+        transcript = _clean_text(provider_payload.get("transcript", transcript))
         suggestions = _provider_suggestions(provider_payload)
-        missing = list(provider_payload.get("missing_or_unclear_fields", []))
-        mentions = list(provider_payload.get("provisional_red_flag_mentions", []))
+        missing = _string_list(provider_payload.get("missing_or_unclear_fields", []))
+        mentions = _string_list(provider_payload.get("provisional_red_flag_mentions", []))
     elif transcript:
         suggestions = _suggest_fields(transcript)
         missing = _missing_fields(suggestions, transcript)
@@ -110,10 +120,11 @@ def draft_audio_intake(
     path = "canned_audio_demo" if config.audio_backend == "canned" else "omni_native"
     if audio_enabled and config.audio_backend == "omni_native":
         audio_model_id = OMNI_MODEL_ID
-    elif audio_enabled and config.audio_backend == "parakeet_nemo":
-        audio_model_id = STRETCH_AUDIO_MODEL_ID
-        field_fill_model_id = STRETCH_TEXT_MODEL_ID
-        path = "parakeet_rnnt_plus_text_nemotron"
+    elif audio_enabled and _is_local_parakeet_backend(config):
+        audio_model_id = PARAKEET_ASR_MODEL_ID
+        field_fill_model_id = _local_field_fill_model_id(config)
+        runtime = LOCAL_PARAKEET_RUNTIME
+        path = LOCAL_PARAKEET_PATH
 
     return AudioDraft(
         audio_intake_path=path,
@@ -181,12 +192,56 @@ def _provider_suggestions(payload: dict[str, Any]) -> list[AudioFieldSuggestion]
         suggestions.append(
             AudioFieldSuggestion(
                 field=str(item["field"]),
-                draft_value=str(item.get("draft_value", "")),
-                source_snippet=str(item.get("source_snippet", "")),
-                source_timecode=str(item.get("source_timecode", "")),
+                draft_value=_clean_text(item.get("draft_value", "")),
+                source_snippet=_clean_text(item.get("source_snippet", "")),
+                source_timecode=_clean_text(item.get("source_timecode", "")),
             )
         )
     return suggestions
+
+
+def _has_provider_payload(payload: dict[str, Any] | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if _clean_text(payload.get("transcript", "")):
+        return True
+    suggestions = payload.get("suggested_fields", [])
+    if isinstance(suggestions, list):
+        for item in suggestions:
+            if isinstance(item, dict) and _clean_text(item.get("field", "")):
+                return True
+    return bool(
+        _string_list(payload.get("missing_or_unclear_fields", []))
+        or _string_list(payload.get("provisional_red_flag_mentions", []))
+    )
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_clean_text(item) for item in value if _clean_text(item)]
+
+
+def _clean_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _is_local_parakeet_backend(config: FigmentConfig) -> bool:
+    return str(getattr(config, "audio_backend", "")) in LOCAL_PARAKEET_AUDIO_BACKENDS
+
+
+def _local_asr_allowed(config: FigmentConfig) -> bool:
+    return bool(getattr(config, "allow_local_asr", False) or getattr(config, "allow_stretch_stack", False))
+
+
+def _local_field_fill_model_id(config: FigmentConfig) -> str:
+    local_model_id = _clean_text(getattr(config, "local_model_id", ""))
+    if local_model_id and "omni" not in local_model_id.lower():
+        return local_model_id
+    active_model_id = _clean_text(getattr(config, "active_model_id", ""))
+    if active_model_id and "4b" in active_model_id.lower():
+        return active_model_id
+    return NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID
 
 
 def _suggest_fields(transcript: str) -> list[AudioFieldSuggestion]:

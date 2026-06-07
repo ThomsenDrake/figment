@@ -2,21 +2,117 @@ import importlib
 
 import pytest
 
-from figment.config import FigmentConfig, OMNI_MODEL_ID
+from figment import config as config_module
+from figment.config import FigmentConfig, OMNI_MODEL_ID, NVIDIA_OMNI_API_MODEL_ID
 from figment.validators import validate_audio_ready, validate_navigator_output
 
 
-def test_config_defaults_to_omni_and_gates_split_stack() -> None:
-    config = FigmentConfig().validated()
+CONFIG_ENV_KEYS = (
+    "FIGMENT_MODE",
+    "MODEL_STACK",
+    "MODEL_BACKEND",
+    "AUDIO_BACKEND",
+    "ENABLE_AUDIO_INTAKE",
+    "ALLOW_LOCAL_ASR",
+    "ALLOW_STRETCH_STACK",
+    "HF_MODEL_ID",
+    "NVIDIA_MODEL_ID",
+    "NVIDIA_BASE_URL",
+    "NVIDIA_API_KEY",
+    "LOCAL_MODEL_ID",
+    "HF_ENDPOINT_URL",
+    "OMNI_ENDPOINT_URL",
+    "HF_TOKEN",
+    "LLAMA_BASE_URL",
+    "FIGMENT_TRACE_DIR",
+)
+
+
+def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in CONFIG_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_config_defaults_to_omni_with_canned_fallback_without_hosted_secret(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+
+    config = FigmentConfig.from_env()
 
     assert config.model_stack == "omni_native"
+    assert config.model_backend == "canned"
     assert config.active_model_id == OMNI_MODEL_ID
 
-    with pytest.raises(ValueError, match="ALLOW_STRETCH_STACK"):
+
+def test_config_uses_hosted_omni_api_model_id_when_secret_is_present(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-nvidia-key")
+
+    config = FigmentConfig.from_env()
+
+    assert config.model_stack == "omni_native"
+    assert config.model_backend == "hosted_omni"
+    assert config.nvidia_model_id == NVIDIA_OMNI_API_MODEL_ID
+    assert config.active_model_id == NVIDIA_OMNI_API_MODEL_ID
+
+
+def test_config_gates_local_4b_parakeet_stack_with_local_asr(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_4b_model_id = getattr(config_module, "NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID", None)
+    parakeet_model_id = getattr(config_module, "PARAKEET_ASR_MODEL_ID", None)
+
+    assert local_4b_model_id == "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
+    assert parakeet_model_id == "nvidia/parakeet-rnnt-1.1b"
+
+    config = FigmentConfig(model_stack="local_4b_parakeet", model_backend="llama_cpp").validated()
+
+    assert config.local_model_id == local_4b_model_id
+    assert config.active_model_id == local_4b_model_id
+
+    with pytest.raises(ValueError, match="parakeet_nemo requires ALLOW_LOCAL_ASR"):
+        FigmentConfig(audio_backend="parakeet_nemo").validated()
+
+    with pytest.raises(ValueError, match="MODEL_STACK=local_4b_parakeet"):
+        FigmentConfig(
+            model_stack="omni_native",
+            audio_backend="parakeet_nemo",
+            allow_local_asr=True,
+        ).validated()
+
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIGMENT_MODE", "local")
+    monkeypatch.setenv("MODEL_BACKEND", "llama_cpp")
+    monkeypatch.setenv("MODEL_STACK", "local_4b_parakeet")
+    monkeypatch.setenv("AUDIO_BACKEND", "parakeet_nemo")
+    monkeypatch.setenv("ALLOW_LOCAL_ASR", "true")
+
+    local_config = FigmentConfig.from_env()
+
+    assert local_config.allow_local_asr is True
+    assert local_config.audio_model_id == parakeet_model_id
+    assert local_config.active_model_id == local_4b_model_id
+
+
+def test_legacy_split_stack_contract_is_rejected(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="base_nano_parakeet.*local_4b_parakeet"):
         FigmentConfig(model_stack="base_nano_parakeet").validated()
 
-    with pytest.raises(ValueError, match="parakeet_nemo requires ALLOW_STRETCH_STACK"):
-        FigmentConfig(audio_backend="parakeet_nemo").validated()
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_STRETCH_STACK", "true")
+
+    with pytest.raises(ValueError, match="ALLOW_STRETCH_STACK.*ALLOW_LOCAL_ASR"):
+        FigmentConfig.from_env()
 
 
 def test_red_flag_rules_run_only_on_confirmed_intake() -> None:
@@ -153,6 +249,61 @@ def test_validator_allows_negated_do_not_start_or_prescribe_list() -> None:
     result = validate_navigator_output(output, {"WOUND-INFECTION-ESCALATION-v1"}, urgency_floor="urgent")
 
     assert result.passed
+
+
+def test_validator_allows_negated_diagnosis_safety_instruction_with_condition_context() -> None:
+    output = {
+        "protocol_urgency": "emergency",
+        "candidate_protocol_pathways": [
+            {"card_id": "PED-DEHYD-RED-FLAGS-v1", "reason_relevant": "Pediatric danger signs were reported."}
+        ],
+        "missing_info_to_collect": ["repeat vitals"],
+        "next_observations_to_collect": ["urine output"],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Escalate per cited local protocol."],
+        "do_not_do": ["Do not diagnose dehydration severity as a final clinical diagnosis."],
+        "source_cards": ["PED-DEHYD-RED-FLAGS-v1"],
+        "handoff_note_sbar": {
+            "situation": "Pediatric dehydration concern",
+            "background": "Synthetic case",
+            "assessment_observations_only": "No urine since morning.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+
+    result = validate_navigator_output(output, {"PED-DEHYD-RED-FLAGS-v1"}, urgency_floor="emergency")
+
+    assert result.passed
+
+
+def test_validator_rejects_prescribing_after_unrelated_negated_instruction() -> None:
+    output = {
+        "protocol_urgency": "routine",
+        "candidate_protocol_pathways": [
+            {"card_id": "SAFETY-BOUNDARIES-v1", "reason_relevant": "Safety boundary review."}
+        ],
+        "missing_info_to_collect": [],
+        "next_observations_to_collect": [],
+        "conflicts_or_uncertainties": [],
+        "responder_checklist": ["Do not wait, prescribe opioid now."],
+        "do_not_do": [],
+        "source_cards": ["SAFETY-BOUNDARIES-v1"],
+        "handoff_note_sbar": {
+            "situation": "Mild symptoms",
+            "background": "Synthetic case",
+            "assessment_observations_only": "Temperature normal.",
+            "handoff_request": "Escalate per protocol",
+        },
+        "responder_plain_language_script": "",
+        "safety_boundary": "Prototype protocol navigation only.",
+    }
+
+    result = validate_navigator_output(output, {"SAFETY-BOUNDARIES-v1"})
+
+    assert not result.passed
+    assert any("forbidden clinical language: prescribe" in item for item in result.failures)
 
 
 def test_validator_rejects_incomplete_handoff_schema() -> None:

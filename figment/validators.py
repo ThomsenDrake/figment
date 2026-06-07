@@ -133,6 +133,9 @@ def _is_negated_safety_phrase(text: str, match_start: int) -> bool:
         return True
     if re.search(r"\bnot\s+an?\s+$", tail):
         return True
+    negated_clause = re.search(r"\b(?:do not|don't|never|must not|cannot|does not)\s+([^.!?\n;]*)$", prefix)
+    if negated_clause and _clause_is_negated_safety_instruction(negated_clause.group(1)):
+        return True
 
     list_marker = re.search(r"\b(?:do not|don't|never|must not|cannot|does not)\s+([^.!?\n;]*)$", prefix)
     if not list_marker:
@@ -144,6 +147,21 @@ def _is_negated_safety_phrase(text: str, match_start: int) -> bool:
         list_marker.group(1),
     )
     return not allowed_list_text
+
+
+def _clause_is_negated_safety_instruction(clause_prefix: str) -> bool:
+    if re.search(
+        r"\b(?:diagnos(?:e|is|ed)|prescrib(?:e|ing|ed)|start|give|dose|dosing)\b",
+        clause_prefix,
+    ):
+        return True
+    return bool(
+        re.search(
+            r"\b(?:provide|offer|make|assign|state|use|treat as)\b[^.!?\n;]{0,80}"
+            r"\b(?:diagnos(?:e|is|ed)|prescription|medication order|condition label)\b",
+            clause_prefix,
+        )
+    )
 
 
 GROUNDING_STOPWORDS = {

@@ -8,6 +8,7 @@ from typing import Any
 from figment.audio_intake import confirm_audio_draft as _confirm_audio_draft
 from figment.audio_intake import draft_audio_intake as _draft_audio_intake
 from figment.config import FigmentConfig, load_config
+from figment.model_client import ModelClient, ModelClientError
 from figment.navigator import run_navigation
 from figment.retrieval import query_from_intake, search_protocol_cards
 from figment.rules import evaluate_rules, run_red_flag_checks
@@ -116,12 +117,27 @@ def draft_audio_intake(
     transcript: str = "",
     config: FigmentConfig | None = None,
     audio_file: str | None = None,
+    provider_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    draft = _draft_audio_intake(transcript=transcript, config=config, audio_file_received=bool(audio_file))
+    config = (config or load_config()).validated()
+    provider_error = None
+    if audio_file and not transcript.strip() and provider_payload is None and _should_use_hosted_omni_audio(config):
+        try:
+            provider_payload = ModelClient(config).generate_audio_draft(audio_file)
+        except ModelClientError as exc:
+            provider_error = f"Hosted Omni audio draft failed; typed transcript or canned fallback required. {exc}"
+    draft = _draft_audio_intake(
+        transcript=transcript,
+        config=config,
+        provider_payload=provider_payload,
+        audio_file_received=bool(audio_file),
+    )
     if audio_file:
         draft["audio_file_received"] = True
         draft["audio_filename"] = Path(audio_file).name
         draft["raw_audio_stored"] = False
+    if provider_error and draft.get("audio_intake_path") == "audio_received_needs_transcript_or_model":
+        draft["processing_status"] = provider_error
     return draft
 
 
@@ -263,6 +279,14 @@ def _load_demo_case(name: str) -> list[str]:
 
 def _draft_audio_ui(audio_file: str | None, transcript: str, config: FigmentConfig | None = None) -> dict[str, Any]:
     return draft_audio_intake(transcript=transcript, config=config, audio_file=audio_file)
+
+
+def _should_use_hosted_omni_audio(config: FigmentConfig) -> bool:
+    return (
+        config.enable_audio_intake
+        and config.audio_backend == "omni_native"
+        and config.model_backend == "hosted_omni"
+    )
 
 
 def _apply_audio_draft_ui(*values: Any) -> list[Any]:

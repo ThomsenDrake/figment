@@ -33,13 +33,14 @@ Build-time optional, depending on the synthetic-data path:
 Reference local demo machine:
 
 * macOS dev machine with 48 GB unified memory.
-* At least 35 GB free disk/RAM headroom for the Q4/Q5 GGUF path.
+* Enough disk/RAM headroom for the local 4B text model, optional quantized weights, and Parakeet ASR dependencies.
 * Internet access for initial model/tool downloads.
 
 Local/offline proof target:
 
-* `ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M` with text-navigation proof first.
-* `llama-server` on `http://127.0.0.1:8001`.
+* `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` for local text navigation and first fine-tune target.
+* `nvidia/parakeet-rnnt-1.1b` for offline ASR after the local ASR gate passes.
+* Local OpenAI-compatible server on `http://127.0.0.1:8001`.
 * 16k context by default, 8k fallback.
 
 ## CLI Tools
@@ -87,15 +88,18 @@ Copy `.env.example` to `.env` locally and fill secrets there. Do not commit `.en
 Required or expected variables:
 
 * `FIGMENT_MODE` — `hosted`, `local`, or `canned`.
-* `MODEL_BACKEND` — `hosted_omni`, `llama_cpp`, `hosted_text_nemotron`, or `canned`.
+* `MODEL_STACK` — `omni_native` for hosted demo mode or `local_4b_parakeet` for the gated local/offline path.
+* `MODEL_BACKEND` — `hosted_omni`, `llama_cpp`, or `canned`.
+* `AUDIO_BACKEND` — `omni_native`, `parakeet_nemo`, `canned`, or `none`.
+* `ALLOW_LOCAL_ASR` — set `true` only after Parakeet local ASR is proven and gated.
 * `HF_MODEL_ID` — defaults to `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`.
 * `NVIDIA_API_KEY` — NVIDIA API Catalog key for hosted Omni mode.
 * `NVIDIA_BASE_URL` — defaults to `https://integrate.api.nvidia.com/v1`.
 * `NVIDIA_MODEL_ID` — defaults to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
-* `LOCAL_MODEL_ID` — local OpenAI-compatible model id or alias.
+* `LOCAL_MODEL_ID` — local OpenAI-compatible model id or alias; default target is `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`.
 * `HF_TOKEN` — Hugging Face token for Space pushes or optional HF endpoint access.
 * `HF_ENDPOINT_URL` — optional dedicated HF Inference Endpoint URL.
-* `LLAMA_BASE_URL` — local llama.cpp OpenAI-compatible endpoint.
+* `LLAMA_BASE_URL` — local OpenAI-compatible endpoint.
 * `FIGMENT_TRACE_DIR` — trace export directory.
 * `MODAL_PROFILE` — optional Modal profile name.
 * `MISTRAL_API_KEY` / `MINIMAX_API_KEY` — optional teacher-model keys.
@@ -113,7 +117,8 @@ Local/offline proof:
 * Local Gradio app.
 * Local protocol cards and SQLite retrieval.
 * Local deterministic rules and validators.
-* Local `llama-server` with Nemotron GGUF.
+* Local OpenAI-compatible server with Nemotron 3 Nano 4B.
+* Optional Parakeet ASR only after `ALLOW_LOCAL_ASR=true` and the local gate passes.
 
 Fallback only:
 
@@ -137,6 +142,6 @@ Before submission:
 ```text
 Space boots cold under build-small-hackathon/figment.
 Hosted live mode returns validated NVIDIA-hosted Nemotron output.
-Local llama.cpp mode runs the same demo case without internet.
+Local 4B mode runs the same demo case without internet.
 No patient PHI is used, logged, or committed.
 ```

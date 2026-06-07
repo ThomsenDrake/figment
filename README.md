@@ -2,11 +2,11 @@
 
 **Offline protocol support for field clinics and disaster response.**
 
-Figment uses deterministic rules for danger signs and an AI protocol navigator for messy field notes, missing-observation planning, card-cited responder checklists, and SBAR handoffs. The frozen primary model path is NVIDIA Nemotron 3 Nano Omni: hosted or self-hosted Omni powers the live Space demo, while local GGUF/llama.cpp mode is the offline text-navigation proof. (The app scaffold is runnable and still under active development — see **Status** below.)
+Figment uses deterministic rules for danger signs and an AI protocol navigator for messy field notes, missing-observation planning, card-cited responder checklists, and SBAR handoffs. The frozen primary model path is NVIDIA Nemotron 3 Nano Omni: hosted or self-hosted Omni powers the live Space demo, while local/off-grid mode targets Nemotron 3 Nano 4B for text navigation plus Parakeet RNNT ASR for dictated intake after verification. (The app scaffold is runnable and still under active development — see **Status** below.)
 
 > ⚠️ **Figment is not a medical device.** It does not diagnose, prescribe, or replace a clinician. It is a prototype for protocol navigation, escalation support, and documentation in low-connectivity environments, for use by trained responders. See [Safety & non-goals](#safety--non-goals).
 
-- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The Gradio scaffold, deterministic rules, hosted NVIDIA Omni client, local OpenAI-compatible client, canned fallback, traces, and tests run locally; the hosted NVIDIA API smoke test is green, while the local GGUF runtime still needs a real model boot test.
+- **Status:** 🚧 In active development for the [Build Small Hackathon](docs/build-small-hackathon-org-card.md) (build window **June 5–15, 2026**). The Gradio scaffold, deterministic rules, hosted NVIDIA Omni client, local OpenAI-compatible client, canned fallback, traces, and tests run locally; the hosted NVIDIA API smoke test is green, while the local 4B runtime and Parakeet ASR still need real model boot tests.
 - **Track:** 🏡 Backyard AI (solve a real problem for a specific, real person you know).
 - **Built for:** a real disaster-response volunteer trained in disaster-response first aid and local protocol use; name withheld for privacy.
 - **Model:** NVIDIA **Nemotron 3 Nano Omni 30B-A3B Reasoning** as the v1 default. The model-card body reports 31B total parameters; the workback plan tracks the HF-sidebar count ambiguity and fallback story.
@@ -44,7 +44,7 @@ Gradio Blocks UI
   → retrieval.py    (SQLite FTS protocol search)
   → prompt_builder.py (constrained navigator prompt; cards + rules injected)
   → navigator.py      (AI protocol navigator)
-  → model_client.py   (hosted/self-hosted Omni, local llama.cpp, or canned fallback)
+  → model_client.py   (hosted/self-hosted Omni, local 4B OpenAI-compatible server, or canned fallback)
   → validators.py   (output validator: JSON, citations, safety checks)
   → sbar.py         (referral note renderer)
   → trace.py        (trace export)
@@ -63,16 +63,16 @@ The Build Small Hackathon caps models at **32B total parameters**. Figment's pri
 
 > **Compliance note:** NVIDIA's model-card body reports **31B total parameters**, which fits the 32B cap. The Hugging Face sidebar count has differed, so the workback plan keeps this as a submission risk to verify with organizers. The ~3B *active* figure is **not** the compliance number — the limit is on *total* parameters.
 
-Local/off-grid proof targets the Omni GGUF route after verification:
+Local/off-grid proof targets a smaller split stack after verification:
 
 | Artifact | Use |
 | -------- | --- |
 | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | primary hosted/self-hosted Omni model ID |
 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | NVIDIA API Catalog / NIM chat-completions model ID |
-| `ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M` | target local text-navigation proof through llama.cpp |
-| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` + `nvidia/parakeet-rnnt-1.1b` | stretch-only split stack, disabled unless `ALLOW_STRETCH_STACK=true` |
+| `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` | local text-navigation and first fine-tuning target |
+| `nvidia/parakeet-rnnt-1.1b` | local/offline ASR target, enabled only after the local ASR gate passes |
 
-Reference dev/demo machine: an M4 Pro MacBook Pro with 48 GB RAM. Local raw-audio Omni remains experimental until the GGUF audio/projection path is proven; the safe local proof may use typed intake or a canned transcript.
+Reference dev/demo machine: an M4 Pro MacBook Pro with 48 GB RAM. Hosted Omni remains the public Space story; local audio is Parakeet-only after verification, and the safe local proof may use typed intake or a canned transcript if ASR is not stable.
 
 ---
 
@@ -110,12 +110,17 @@ If the hosted model is unavailable or returns invalid JSON, Figment falls back t
 
 ### 2. Run against a local OpenAI-compatible server
 
-To target a local OpenAI-compatible llama.cpp server after the Omni GGUF path is verified:
+To target a local OpenAI-compatible server after the Nemotron 3 Nano 4B path is verified:
 
 ```bash
-brew install llama.cpp
+vllm serve nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 \
+  --served-model-name nemotron3-nano-4b-bf16 \
+  --trust-remote-code \
+  --max-model-len 16384
+
+# Or, on the Mac/off-grid path, use a verified 4B llama.cpp-compatible quantization:
 llama-server \
-  -hf ggml-org/NVIDIA-Nemotron-3-Nano-Omni:Q4_K_M \
+  -hf <verified-nemotron-3-nano-4b-gguf> \
   --ctx-size 16384 \
   --port 8001 \
   --host 127.0.0.1 \
@@ -123,7 +128,7 @@ llama-server \
   --top-p 0.9
 ```
 
-Set `MODEL_BACKEND=llama_cpp`, `LLAMA_BASE_URL=http://127.0.0.1:8001/v1`, and `LOCAL_MODEL_ID=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` in `.env`.
+Set `MODEL_BACKEND=llama_cpp`, `MODEL_STACK=local_4b_parakeet`, `LLAMA_BASE_URL=http://127.0.0.1:8001/v1`, and `LOCAL_MODEL_ID=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` in `.env`.
 
 ### 3. Canned fallback
 

@@ -1,6 +1,191 @@
 import importlib
 
-from figment.config import FigmentConfig
+from figment.config import FigmentConfig, OMNI_MODEL_ID
+
+
+def test_hosted_omni_provider_payload_becomes_unconfirmed_audio_draft() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+    ).validated()
+    provider_payload = {
+        "transcript": "Adult reports severe headache and visual spots after flood cleanup.",
+        "suggested_fields": [
+            {
+                "field": "symptoms",
+                "draft_value": "severe headache and visual spots",
+                "source_snippet": "severe headache and visual spots",
+                "source_timecode": "00:01-00:05",
+            }
+        ],
+        "missing_or_unclear_fields": ["blood_pressure", "pregnancy_status"],
+        "provisional_red_flag_mentions": ["severe headache", "visual spots"],
+    }
+
+    draft = app.draft_audio_intake(config=config, provider_payload=provider_payload)
+
+    assert draft["audio_intake_path"] == "omni_native"
+    assert draft["audio_runtime"] == "omni_native"
+    assert draft["audio_model_id"] == OMNI_MODEL_ID
+    assert draft["field_fill_model_id"] is None
+    assert draft["transcript"] == provider_payload["transcript"]
+    assert draft["missing_or_unclear_fields"] == ["blood_pressure", "pregnancy_status"]
+    assert draft["provisional_red_flag_mentions"] == ["severe headache", "visual spots"]
+    assert draft["confirmed_intake_required"] is True
+    assert draft["confirmation_status"] == "unconfirmed"
+    assert draft["raw_audio_stored"] is False
+    assert draft["suggested_fields"] == [
+        {
+            "field": "symptoms",
+            "draft_value": "severe headache and visual spots",
+            "source_snippet": "severe headache and visual spots",
+            "source_timecode": "00:01-00:05",
+            "status": "audio_draft",
+            "needs_confirmation": True,
+        }
+    ]
+
+
+def test_manual_edit_wins_over_hosted_omni_audio_draft_on_confirmation() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+    ).validated()
+    audio_draft = app.draft_audio_intake(
+        config=config,
+        provider_payload={
+            "transcript": "Audio says chest pain, but the medic corrects it.",
+            "suggested_fields": [
+                {
+                    "field": "chief_concern",
+                    "draft_value": "chest pain",
+                    "source_snippet": "chest pain",
+                }
+            ],
+        },
+    )
+
+    confirmed, _, confirmed_audio = app._confirm_ui_intake(
+        "mobile clinic",
+        "52",
+        "not_applicable",
+        "manual correction: wound concern",
+        "",
+        "",
+        "unknown",
+        "unknown",
+        "basic kit",
+        "Typed note remains source of truth.",
+        audio_draft,
+    )
+
+    assert confirmed["chief_concern"] == "manual correction: wound concern"
+    assert confirmed_audio["suggested_fields"][0]["draft_value"] == "manual correction: wound concern"
+    assert confirmed_audio["suggested_fields"][0]["status"] == "edited"
+    assert confirmed_audio["suggested_fields"][0]["needs_confirmation"] is False
+
+
+def test_uploaded_audio_uses_hosted_omni_provider_when_enabled(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    audio_path = tmp_path / "field-note.wav"
+    audio_path.write_bytes(b"fake wav bytes")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+        nvidia_api_key="test-nvidia-key",
+    ).validated()
+    seen = {}
+
+    class FakeModelClient:
+        def __init__(self, config_arg):
+            seen["config"] = config_arg
+
+        def generate_audio_draft(self, audio_file):
+            seen["audio_file"] = audio_file
+            return {
+                "transcript": "Adult reports trouble breathing.",
+                "suggested_fields": [
+                    {
+                        "field": "symptoms",
+                        "draft_value": "trouble breathing",
+                        "source_snippet": "trouble breathing",
+                    }
+                ],
+                "missing_or_unclear_fields": ["vitals"],
+                "provisional_red_flag_mentions": ["trouble breathing"],
+            }
+
+    monkeypatch.setattr(app, "ModelClient", FakeModelClient)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert seen["config"] is config
+    assert seen["audio_file"] == str(audio_path)
+    assert draft["audio_intake_path"] == "omni_native"
+    assert draft["audio_runtime"] == "omni_native"
+    assert draft["audio_model_id"] == OMNI_MODEL_ID
+    assert draft["transcript"] == "Adult reports trouble breathing."
+    assert draft["suggested_fields"][0]["field"] == "symptoms"
+    assert draft["confirmation_status"] == "unconfirmed"
+    assert draft["audio_filename"] == "field-note.wav"
+    assert draft["raw_audio_stored"] is False
+
+
+def test_hosted_omni_audio_failure_fails_closed(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    audio_path = tmp_path / "field-note.wav"
+    audio_path.write_bytes(b"fake wav bytes")
+    config = FigmentConfig(
+        model_backend="hosted_omni",
+        enable_audio_intake=True,
+        audio_backend="omni_native",
+        nvidia_api_key="test-nvidia-key",
+    ).validated()
+
+    class FailingModelClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def generate_audio_draft(self, _audio_file):
+            raise app.ModelClientError("endpoint unavailable")
+
+    monkeypatch.setattr(app, "ModelClient", FailingModelClient)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert draft["audio_intake_path"] == "audio_received_needs_transcript_or_model"
+    assert draft["audio_runtime"] == "unprocessed_audio"
+    assert draft["suggested_fields"] == []
+    assert "hosted omni audio draft failed" in draft["processing_status"].lower()
+    assert draft["audio_filename"] == "field-note.wav"
+    assert draft["raw_audio_stored"] is False
+
+
+def test_local_parakeet_path_uses_local_4b_runtime_label_when_gated() -> None:
+    app = importlib.import_module("app")
+    config = FigmentConfig(
+        model_stack="local_4b_parakeet",
+        model_backend="llama_cpp",
+        enable_audio_intake=True,
+        audio_backend="parakeet_nemo",
+        allow_local_asr=True,
+    ).validated()
+
+    draft = app.draft_audio_intake(
+        transcript="Local Parakeet transcript says the patient has trouble breathing.",
+        config=config,
+    )
+
+    assert draft["audio_intake_path"] == "parakeet_rnnt_plus_text_nemotron"
+    assert draft["audio_runtime"] == "local_4b_parakeet"
+    assert draft["audio_model_id"] == "nvidia/parakeet-rnnt-1.1b"
+    assert draft["field_fill_model_id"] == "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
+    assert draft["confirmation_status"] == "unconfirmed"
 
 
 def test_confirm_intake_does_not_silently_bulk_accept_audio_suggestions() -> None:
@@ -162,6 +347,7 @@ def test_uploaded_audio_without_transcript_or_payload_is_not_fabricated_as_omni(
         transcript="",
         config=config,
         audio_file="/tmp/field-note.wav",
+        provider_payload={},
     )
 
     assert draft["audio_file_received"] is True

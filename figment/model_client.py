@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
-import urllib.error
+import mimetypes
+from pathlib import Path
 import urllib.request
 from typing import Any
 
@@ -12,6 +14,21 @@ from .config import FigmentConfig, load_config
 
 class ModelClientError(RuntimeError):
     """Raised when a configured model backend cannot return a usable response."""
+
+
+NVIDIA_HOSTED_MAX_TOKENS = 8192
+DEFAULT_MAX_TOKENS = 4096
+
+AUDIO_DRAFT_PROMPT = """Transcribe this responder audio and return ONLY JSON with:
+{
+  "transcript": "verbatim or lightly normalized transcript",
+  "suggested_fields": [
+    {"field": "chief_concern|symptoms|vitals|patient_age|pregnancy_status|allergies|medications|available_supplies|responder_note", "draft_value": "", "source_snippet": "", "source_timecode": ""}
+  ],
+  "missing_or_unclear_fields": [],
+  "provisional_red_flag_mentions": []
+}
+The output is a provisional intake draft for a trained responder. Do not diagnose, prescribe, or decide urgency. Do not include raw audio data."""
 
 
 def canned_navigator_output(
@@ -88,7 +105,7 @@ class ModelClient:
                 model_id=self.config.local_model_id,
                 auth_headers={},
             )
-        if self.config.model_backend in {"hosted_omni", "hosted_text_nemotron"}:
+        if self.config.model_backend == "hosted_omni":
             endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url or self.config.nvidia_base_url
             if not endpoint:
                 raise ModelClientError("hosted model backend requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
@@ -98,9 +115,33 @@ class ModelClient:
                 prompt,
                 model_id=self.config.active_model_id,
                 auth_headers=self._hosted_auth_headers(endpoint),
-                include_nvidia_options=self.config.model_backend == "hosted_omni" and is_nvidia_endpoint,
+                include_nvidia_options=is_nvidia_endpoint,
             )
         raise ModelClientError(f"unsupported model backend: {self.config.model_backend}")
+
+    def generate_audio_draft(self, audio_path: str | Path) -> dict[str, Any]:
+        if self.config.model_backend != "hosted_omni":
+            raise ModelClientError("hosted Omni audio drafting requires MODEL_BACKEND=hosted_omni")
+        endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url or self.config.nvidia_base_url
+        if not endpoint:
+            raise ModelClientError("hosted Omni audio drafting requires NVIDIA_BASE_URL, OMNI_ENDPOINT_URL, or HF_ENDPOINT_URL")
+        is_nvidia_endpoint = "integrate.api.nvidia.com" in endpoint
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": AUDIO_DRAFT_PROMPT},
+                    {"type": "audio_url", "audio_url": {"url": _audio_file_data_url(audio_path)}},
+                ],
+            }
+        ]
+        return self._call_openai_compatible_messages(
+            endpoint,
+            messages,
+            model_id=self.config.active_model_id,
+            auth_headers=self._hosted_auth_headers(endpoint),
+            include_nvidia_options=is_nvidia_endpoint,
+        )
 
     def _call_openai_compatible(
         self,
@@ -111,17 +152,36 @@ class ModelClient:
         auth_headers: dict[str, str],
         include_nvidia_options: bool = False,
     ) -> dict[str, Any]:
+        return self._call_openai_compatible_messages(
+            base_url,
+            [{"role": "user", "content": prompt}],
+            model_id=model_id,
+            auth_headers=auth_headers,
+            include_nvidia_options=include_nvidia_options,
+        )
+
+    def _call_openai_compatible_messages(
+        self,
+        base_url: str,
+        messages: list[dict[str, Any]],
+        *,
+        model_id: str,
+        auth_headers: dict[str, str],
+        include_nvidia_options: bool = False,
+    ) -> dict[str, Any]:
         url = base_url.rstrip("/")
         if not url.endswith("/chat/completions"):
             url = f"{url}/chat/completions"
         body = {
             "model": model_id,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": 0.0,
-            "max_tokens": 4096,
+            "max_tokens": DEFAULT_MAX_TOKENS,
             "response_format": {"type": "json_object"},
         }
         if include_nvidia_options:
+            body["max_tokens"] = NVIDIA_HOSTED_MAX_TOKENS
+            body["stream"] = False
             body["chat_template_kwargs"] = {"enable_thinking": False}
         request = urllib.request.Request(
             url,
@@ -132,7 +192,7 @@ class ModelClient:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (OSError, TimeoutError, json.JSONDecodeError) as exc:
             raise ModelClientError(f"model backend failed: {exc}") from exc
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices:
@@ -143,9 +203,7 @@ class ModelClient:
         message = first_choice.get("message")
         if not isinstance(message, dict):
             raise ModelClientError("model response did not include a message")
-        content = message.get("content")
-        if not isinstance(content, str):
-            raise ModelClientError("model response content was not text")
+        content = _message_content_text(message)
         try:
             return _parse_json_object(content)
         except json.JSONDecodeError as exc:
@@ -180,3 +238,45 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     if isinstance(parsed, dict):
         return parsed
     raise json.JSONDecodeError("model response JSON was not an object", text, 0)
+
+
+def _message_content_text(message: dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return _message_part_text(content)
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                text_parts.append(part)
+            elif isinstance(part, dict):
+                part_text = _message_part_text(part)
+                if part_text:
+                    text_parts.append(part_text)
+        if text_parts:
+            return "\n".join(text_parts)
+        raise ModelClientError("model response content did not include text parts")
+    raise ModelClientError("model response content was not text")
+
+
+def _message_part_text(part: dict[str, Any]) -> str:
+    for key in ("text", "content", "value"):
+        value = part.get(key)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+def _audio_file_data_url(audio_path: str | Path) -> str:
+    path = Path(audio_path)
+    try:
+        audio_bytes = path.read_bytes()
+    except OSError as exc:
+        raise ModelClientError(f"could not read audio file for hosted Omni draft: {exc}") from exc
+    mime_type = mimetypes.guess_type(path.name)[0] or "audio/wav"
+    if not mime_type.startswith("audio/"):
+        mime_type = "audio/wav"
+    encoded = base64.b64encode(audio_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
