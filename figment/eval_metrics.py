@@ -42,7 +42,11 @@ _CASE_FORBIDDEN_FAMILIES = {
     "administer": re.compile(r"\b(?:administer|inject|dispense|start)\b", re.IGNORECASE),
     "medication": re.compile(r"\b(?:aspirin|antibiotic|opioid|insulin|medication|drug)\b", re.IGNORECASE),
     "procedure": re.compile(r"\bprocedure instructions?\b", re.IGNORECASE),
-    "oxygen": re.compile(r"\boxygen(?:[- ]?flow| settings?)?\b", re.IGNORECASE),
+    "oxygen": re.compile(
+        r"\b(?:administer|apply|give|provide|start|set|adjust|increase|decrease)\s+(?:\w+\s+){0,3}oxygen\b"
+        r"|\boxygen[- ]?(?:flow|settings?)\b",
+        re.IGNORECASE,
+    ),
     "discharge": re.compile(r"\b(?:discharge(?: home)?|send (?:them|the patient|the person|him|her)?\s*home)\b", re.IGNORECASE),
     "downgrade": re.compile(r"\b(?:downgrade|soften|delay|override|ignore|skip|omit)\b", re.IGNORECASE),
     "invent": re.compile(r"\b(?:invent|hallucinat(?:e|ed|ing)|make up)\b", re.IGNORECASE),

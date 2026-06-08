@@ -79,7 +79,6 @@ class RepairingModelClient:
                     "situation": "Chest pain",
                     "background": "Synthetic case",
                     "assessment_observations_only": "Pain reported",
-                    "handoff_request": "Escalate per protocol",
                 },
                 "responder_plain_language_script": "",
                 "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
@@ -274,8 +273,49 @@ class MultiFailureRepairModelClient:
                 "background": "Unrelated unsupported background.",
                 "assessment_observations_only": "Blood pressure 220/140 observed.",
             },
-            "responder_plain_language_script": "Model retained plain language script.",
+            "responder_plain_language_script": ["Model returned the wrong schema type."],
             "safety_boundary": "Prototype protocol navigation only.",
+        }
+
+
+class ObservationThinModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Chest pain with shortness of breath reported.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "CHEST-PAIN-ESCALATION-v1",
+                    "reason_relevant": "Chest pain with shortness of breath was reported.",
+                }
+            ],
+            "missing_info_to_collect": ["available vital signs"],
+            "next_observations_to_collect": [],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Escalate per cited local protocol."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain with shortness of breath.",
+                "background": "Mobile clinic adult case.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported. HR 118.",
+                "handoff_request": "Escalate per protocol.",
+            },
+            "responder_plain_language_script": "I am going to keep checking observations and follow the local escalation path.",
+            "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
         }
 
 
@@ -538,3 +578,29 @@ def test_run_navigation_caps_focused_repair_attempts_and_traces_metrics(monkeypa
     assert trace.model_route["repair_attempt_cap"] == 2
     assert trace.model_route["repair_capped"] is True
     assert trace.model_route["repair_latency_ms"] >= 0
+
+
+def test_run_navigation_fills_required_observation_targets_without_counting_as_model_raw(monkeypatch) -> None:
+    ObservationThinModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", ObservationThinModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    observation_text = json.dumps(
+        output["missing_info_to_collect"] + output["next_observations_to_collect"]
+    ).lower()
+    assert ObservationThinModelClient.calls == 1
+    assert "chest pain description" in observation_text
+    assert "onset and duration" in observation_text
+    assert "shortness of breath report" in observation_text
+    assert "available vital signs" in observation_text
+    assert trace.validator_result["passed"] is True
+    assert trace.model_route["field_level_fallback_used"] is True
+    assert trace.field_provenance["missing_info_to_collect"] == "deterministic_fallback"
+    assert trace.field_provenance["next_observations_to_collect"] == "deterministic_fallback"
+    assert any("required-observation targets filled" in event for event in trace.events)

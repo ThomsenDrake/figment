@@ -94,6 +94,14 @@ def test_build_focused_repair_prompt_limits_model_to_selected_fields() -> None:
         previous_output=previous_output,
         repair_scope=scope,
         urgency_floor="emergency",
+        required_observation_targets=[
+            {
+                "id": "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+                "card_id": "CHEST-PAIN-ESCALATION-v1",
+                "display_text": "chest pain description",
+                "cue_tokens": ["chest", "pain", "description"],
+            }
+        ],
     )
 
     assert "BASE NAVIGATOR PROMPT" in prompt
@@ -102,6 +110,8 @@ def test_build_focused_repair_prompt_limits_model_to_selected_fields() -> None:
     assert "protocol_urgency" not in prompt.split("PREVIOUS_VALUES_FOR_ALLOWED_FIELDS:", 1)[1]
     assert "required observations" in prompt
     assert "CHEST-PAIN-ESCALATION-v1" in prompt
+    assert "CHEST-PAIN-ESCALATION-v1::required_observation::1" in prompt
+    assert "chest pain description" in prompt
 
 
 def test_forbidden_language_prompt_keeps_safety_boundaries_explicit() -> None:

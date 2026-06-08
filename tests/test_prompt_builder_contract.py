@@ -154,6 +154,32 @@ def test_prompt_context_lists_allowed_facts_and_required_observations() -> None:
         "available vital signs",
     ]
 
+    targets = context["required_observation_targets"]
+    chest_targets = [target for target in targets if target["card_id"] == "CHEST-PAIN-ESCALATION-v1"]
+    assert chest_targets == [
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "chest pain description",
+            "cue_tokens": ["chest", "pain", "description"],
+        },
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "onset and duration",
+            "cue_tokens": ["onset", "duration"],
+        },
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::3",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "available vital signs",
+            "cue_tokens": ["available", "vital", "signs"],
+        },
+    ]
+
 
 def test_prompt_context_guides_routine_and_negated_cases() -> None:
     prompt, _ = build_prompt(
@@ -172,3 +198,35 @@ def test_prompt_context_guides_routine_and_negated_cases() -> None:
     assert "Do not convert denied or absent symptoms into red_flags" in guidance_text
     assert "keep protocol_urgency routine" in guidance_text
     assert "nearby emergency card language" in guidance_text
+
+    ledger = context["case_fact_ledger"]
+    absent_text = json.dumps(ledger["absent_or_denied"], sort_keys=True).lower()
+    present_text = json.dumps(ledger["present"], sort_keys=True).lower()
+    assert "no chest pain" in absent_text
+    assert "no shortness of breath" in absent_text
+    assert "routine cough check" in present_text
+
+
+def test_prompt_context_includes_sbar_template_and_internal_target_id_contract() -> None:
+    prompt, _ = build_prompt(
+        _confirmed_chest_pain_intake(),
+        _retrieved_cards(),
+        _emergency_chest_pain_rules(),
+        "emergency",
+    )
+    context = _context_from_prompt(prompt)
+
+    sbar_template = context["handoff_note_sbar_template"]
+    assert sbar_template == {
+        "situation": "Chest pain",
+        "background": "Setting: mobile clinic. Age: 52. Pregnancy status: not_applicable.",
+        "assessment_observations_only": "Symptoms: Crushing chest pain and shortness of breath. Vitals: HR 118; blood pressure pending. Red flags: Chest pain escalation cue.",
+        "handoff_request": "Request emergency review/escalation per cited local protocol cards.",
+    }
+
+    internal_contract = context["internal_generation_contract"]
+    assert internal_contract["optional_trace_only_keys"] == ["selected_required_observation_ids"]
+    assert internal_contract["strip_before_user_display"] is True
+    assert "selected_required_observation_ids" in internal_contract["selected_required_observation_ids"]
+    assert "selected_required_observation_ids" not in context["navigator_output_schema"]
+    assert "selected_required_observation_ids" not in context["required_json_skeleton"]

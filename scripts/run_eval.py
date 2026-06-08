@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from figment.config import FigmentConfig  # noqa: E402
 from figment.eval_metrics import score_expected_labels, summarize_eval_records  # noqa: E402
 from figment.field_provenance import (  # noqa: E402
+    DETERMINISTIC_FALLBACK,
     accepted_raw_fields_from_failures,
     deterministic_field_provenance,
     has_deterministic_patches,
@@ -25,6 +26,7 @@ from figment.field_provenance import (  # noqa: E402
 )  # noqa: E402
 from figment.focused_repair import build_focused_repair_prompts  # noqa: E402
 from figment.model_client import ModelClient, ModelClientError, canned_navigator_output  # noqa: E402
+from figment.observation_targets import apply_navigation_scaffolding, required_observation_targets  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
 from figment.retrieval import known_card_ids, query_from_intake, search_protocol_cards  # noqa: E402
 from figment.rules import run_red_flag_checks  # noqa: E402
@@ -105,6 +107,8 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
     final_output: dict[str, Any]
     final_validation: dict[str, Any]
     field_provenance: dict[str, str] = {}
+    scaffold_patched_fields: set[str] = set()
+    filled_required_observation_ids: list[str] = []
 
     context = {
         "intake": intake,
@@ -131,6 +135,15 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         client = ModelClient(config)
         try:
             raw_output = client.generate_json(prompt, context)
+            scaffold_result = apply_navigation_scaffolding(
+                raw_output,
+                retrieved_cards=retrieved,
+                rule_results=rule_results,
+                urgency_floor=floor,
+            )
+            raw_output = scaffold_result.output
+            scaffold_patched_fields = scaffold_result.patched_fields
+            filled_required_observation_ids = scaffold_result.filled_required_observation_ids
             raw_validation = _validate_output(raw_output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
         except ModelClientError as exc:
             raw_validation = {"passed": False, "failures": [f"model backend error: {exc}"]}
@@ -140,6 +153,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
             final_output = raw_output
             final_validation = raw_validation
             field_provenance = model_raw_field_provenance()
+            _mark_deterministic_patch_fields(field_provenance, scaffold_patched_fields)
         else:
             if raw_output is not None:
                 fallback_output, fallback_validation = _run_fallback(
@@ -170,6 +184,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                     rule_results=rule_results,
                     retrieved=retrieved,
                     retrieved_ids=retrieved_ids,
+                    scaffold_patched_fields=scaffold_patched_fields,
                 )
                 if merged_output is not None and merged_validation is not None:
                     final_output = merged_output
@@ -197,7 +212,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
 
     field_level_fallback_used = has_deterministic_patches(field_provenance)
 
-    raw_success = raw_attempted and raw_validation["passed"]
+    raw_success = raw_attempted and raw_validation["passed"] and not scaffold_patched_fields
     repair_success = repair_attempted and repair_validation["passed"]
     fallback_success = fallback_used and fallback_validation["passed"]
     fallback_tier = "canned" if fallback_used else "configured"
@@ -209,6 +224,8 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "fallback_tier": fallback_tier,
         "fallback_reason": fallback_reason,
         "field_level_fallback_used": field_level_fallback_used,
+        "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
+        "filled_required_observation_ids": filled_required_observation_ids,
     }
     trace_payload = {
         "case_id": case["case_id"],
@@ -249,6 +266,8 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "fallback_tier": fallback_tier,
         "fallback_reason": fallback_reason,
         "field_level_fallback_used": field_level_fallback_used,
+        "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
+        "filled_required_observation_ids": filled_required_observation_ids,
         "raw_configured_model_attempted": raw_attempted,
         "raw_configured_model_success": raw_success,
         "repair_attempted": repair_attempted,
@@ -282,6 +301,12 @@ def _run_fallback(
     retrieved_ids: list[str],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     output = canned_navigator_output(intake, rule_results, retrieved, floor)
+    output = apply_navigation_scaffolding(
+        output,
+        retrieved_cards=retrieved,
+        rule_results=rule_results,
+        urgency_floor=floor,
+    ).output
     validation = _validate_output(output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
     return output, validation
 
@@ -321,6 +346,7 @@ def _try_field_level_model_output(
     rule_results: list[dict[str, Any]],
     retrieved: list[dict[str, Any]],
     retrieved_ids: list[str],
+    scaffold_patched_fields: set[str],
 ) -> tuple[dict[str, Any] | None, dict[str, Any], bool, dict[str, Any] | None, dict[str, Any] | None, dict[str, str]]:
     accepted_raw_fields = accepted_raw_fields_from_failures(validation_failures)
     repaired_fields: dict[str, Any] = {}
@@ -331,6 +357,7 @@ def _try_field_level_model_output(
         previous_output=raw_output,
         failures=validation_failures,
         urgency_floor=floor,
+        required_observation_targets=required_observation_targets(retrieved),
     ):
         repair_attempted = True
         try:
@@ -376,6 +403,7 @@ def _try_field_level_model_output(
         if merged_validation["passed"]:
             if merge_result.provenance == deterministic_field_provenance():
                 continue
+            _mark_deterministic_patch_fields(merge_result.provenance, scaffold_patched_fields)
             if candidate_repaired_fields:
                 repair_validation = merged_validation
             return (
@@ -389,6 +417,12 @@ def _try_field_level_model_output(
         if candidate_repaired_fields:
             repair_validation = merged_validation
     return None, repair_validation, repair_attempted, None, None, {}
+
+
+def _mark_deterministic_patch_fields(provenance: dict[str, str], fields: set[str]) -> None:
+    for field in fields:
+        if field in provenance:
+            provenance[field] = DETERMINISTIC_FALLBACK
 
 
 def _repair_prompt(

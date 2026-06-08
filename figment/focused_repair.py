@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
+from .observation_targets import targets_for_failure_cards
+
 
 NAVIGATOR_OUTPUT_FIELD_ORDER = (
     "protocol_urgency",
@@ -89,6 +91,7 @@ def build_focused_repair_prompts(
     previous_output: Mapping[str, Any],
     failures: Iterable[str],
     urgency_floor: str,
+    required_observation_targets: Iterable[Mapping[str, Any]] | None = None,
 ) -> tuple[FocusedRepairPrompt, ...]:
     """Build one focused repair prompt for each classified validation scope."""
 
@@ -100,6 +103,7 @@ def build_focused_repair_prompts(
                 previous_output=previous_output,
                 repair_scope=scope,
                 urgency_floor=urgency_floor,
+                required_observation_targets=required_observation_targets,
             ),
         )
         for scope in classify_validation_failures(failures)
@@ -112,6 +116,7 @@ def build_focused_repair_prompt(
     previous_output: Mapping[str, Any],
     repair_scope: RepairScope,
     urgency_floor: str,
+    required_observation_targets: Iterable[Mapping[str, Any]] | None = None,
 ) -> str:
     """Build a JSON-only focused repair prompt for one repair scope."""
 
@@ -123,6 +128,11 @@ def build_focused_repair_prompt(
         "deterministic_validation_failures": list(repair_scope.failures),
         "urgency_floor": urgency_floor,
     }
+    if repair_scope.name == "missing_observations":
+        repair_context["required_observation_targets"] = targets_for_failure_cards(
+            required_observation_targets or (),
+            repair_scope.failures,
+        )
     return (
         f"{original_prompt}\n\n"
         "Your previous navigator JSON failed deterministic validation. Perform focused field repair only.\n"
@@ -210,7 +220,7 @@ def _scope_instruction(scope_name: str) -> str:
     if scope_name == "missing_observations":
         return (
             "Repair only missing_info_to_collect and next_observations_to_collect. Reference required observations "
-            "from the cited or retrieved protocol cards; avoid generic placeholders."
+            "from required_observation_targets by id and display_text; avoid generic placeholders."
         )
     if scope_name == "citations_and_pathways":
         return (

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .observation_targets import build_case_fact_ledger, required_observation_targets
 from .trace import stable_hash
 
 
@@ -20,6 +21,9 @@ Rules:
 - Use allowed_facts_inventory as the complete fact boundary. Do not introduce handoff facts that are absent from confirmed intake, deterministic rules, or retrieved cards.
 - Fill every key shown in REQUIRED_JSON_SKELETON, including every handoff_note_sbar subkey.
 - Use required_observations_inventory when choosing missing_info_to_collect and next_observations_to_collect.
+- Cover required_observation_targets by id when writing missing_info_to_collect and next_observations_to_collect.
+- Use case_fact_ledger.present for supported facts and case_fact_ledger.absent_or_denied for symptoms that must not become red_flags.
+- Use handoff_note_sbar_template as the grounded SBAR starting point; rewrite only within confirmed intake, deterministic rules, and cited cards.
 - Do not discharge, clear for discharge, or send anyone home. Do not provide autonomous routing; route only to local protocol, supervisor, clinician, or emergency pathway when the cited cards support it.
 - Do not give a drug dose unless a cited card explicitly contains it.
 - If critical info is missing, list it in missing_info_to_collect and prioritize the next 3 to 5 observations to collect.
@@ -96,6 +100,10 @@ def build_prompt(
         "retrieved_protocol_cards": card_payload,
         "allowed_facts_inventory": _allowed_facts_inventory(intake, card_payload, rule_results, urgency_floor),
         "required_observations_inventory": _required_observations_inventory(card_payload),
+        "required_observation_targets": required_observation_targets(card_payload),
+        "case_fact_ledger": build_case_fact_ledger(intake),
+        "handoff_note_sbar_template": _handoff_note_sbar_template(intake, rule_results, urgency_floor),
+        "internal_generation_contract": _internal_generation_contract(),
         "routine_or_negated_case_guidance": ROUTINE_OR_NEGATED_CASE_GUIDANCE,
         "audio_draft_policy": {
             "audio_is_pre_navigation_only": True,
@@ -226,6 +234,63 @@ def _safe_audio_draft_context(audio_draft: dict[str, Any] | None) -> dict[str, A
         "accepted_or_edited_fields": accepted_or_edited_fields,
         "raw_audio_stored": False,
     }
+
+
+def _handoff_note_sbar_template(
+    intake: dict[str, Any],
+    rule_results: list[dict[str, Any]],
+    urgency_floor: str,
+) -> dict[str, str]:
+    situation = _first_text(
+        intake.get("chief_concern"),
+        intake.get("responder_note"),
+        "Confirmed field concern",
+    )
+    background_parts = []
+    if _has_value(intake.get("setting")):
+        background_parts.append(f"Setting: {intake['setting']}.")
+    if _has_value(intake.get("patient_age")):
+        background_parts.append(f"Age: {intake['patient_age']}.")
+    if _has_value(intake.get("pregnancy_status")):
+        background_parts.append(f"Pregnancy status: {intake['pregnancy_status']}.")
+
+    assessment_parts = []
+    if _has_value(intake.get("symptoms")):
+        assessment_parts.append(f"Symptoms: {intake['symptoms']}.")
+    if _has_value(intake.get("vitals")):
+        assessment_parts.append(f"Vitals: {intake['vitals']}.")
+    red_flag_labels = [
+        str(rule.get("label") or rule.get("rule_id"))
+        for rule in rule_results
+        if rule.get("label") or rule.get("rule_id")
+    ]
+    if red_flag_labels:
+        assessment_parts.append(f"Red flags: {'; '.join(red_flag_labels)}.")
+
+    return {
+        "situation": str(situation),
+        "background": " ".join(background_parts) or "Background details pending from confirmed intake.",
+        "assessment_observations_only": " ".join(assessment_parts) or "Assessment observations pending from confirmed intake.",
+        "handoff_request": f"Request {urgency_floor} review/escalation per cited local protocol cards.",
+    }
+
+
+def _internal_generation_contract() -> dict[str, Any]:
+    return {
+        "optional_trace_only_keys": ["selected_required_observation_ids"],
+        "selected_required_observation_ids": (
+            "selected_required_observation_ids may be emitted with ids from required_observation_targets "
+            "that are covered in missing_info_to_collect or next_observations_to_collect. This key is trace-only."
+        ),
+        "strip_before_user_display": True,
+    }
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if _has_value(value):
+            return str(value).strip()
+    return ""
 
 
 def _has_value(value: Any) -> bool:

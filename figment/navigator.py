@@ -8,6 +8,7 @@ from typing import Any
 
 from .config import FigmentConfig, load_config
 from .field_provenance import (
+    DETERMINISTIC_FALLBACK,
     accepted_raw_fields_from_failures,
     deterministic_field_provenance,
     has_deterministic_patches,
@@ -16,6 +17,7 @@ from .field_provenance import (
 )
 from .focused_repair import build_focused_repair_prompts
 from .model_client import ModelClient, ModelClientError, canned_navigator_output
+from .observation_targets import apply_navigation_scaffolding, required_observation_targets
 from .prompt_builder import build_prompt
 from .retrieval import known_card_ids, query_from_intake, search_protocol_cards
 from .trace import FigmentTrace, scrub_audio_metadata, stable_hash, write_trace
@@ -52,6 +54,7 @@ def run_navigation(
     events = ["input captured", "rules evaluated", "cards retrieved", "navigator output generated"]
     fallback_reason: str | None = None
     field_provenance: dict[str, str] = {}
+    scaffold_patched_fields: set[str] = set()
     repair_metrics: dict[str, Any] = _empty_repair_metrics()
     try:
         output = client.generate_json(
@@ -77,11 +80,22 @@ def run_navigation(
             if item.get("card_id") or item.get("card", {}).get("card_id")
         }
         card_ids.update(str(card_id) for card_id in output.get("source_cards", []))
+    scaffold_result = apply_navigation_scaffolding(
+        output,
+        retrieved_cards=retrieved,
+        rule_results=rule_results,
+        urgency_floor=floor,
+    )
+    output = scaffold_result.output
+    scaffold_patched_fields = scaffold_result.patched_fields
+    if scaffold_result.filled_required_observation_ids:
+        events.append("required-observation targets filled deterministically")
     validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
     if validation.passed and not field_provenance:
         field_provenance = (
             deterministic_field_provenance() if config.model_backend == "canned" else model_raw_field_provenance()
         )
+        _mark_deterministic_patch_fields(field_provenance, scaffold_patched_fields)
     if not validation.passed and fallback_reason is None and config.model_backend != "canned":
         field_result = _try_field_level_model_output(
             client=client,
@@ -93,6 +107,7 @@ def run_navigation(
             rule_results=rule_results,
             retrieved=retrieved,
             known_cards=card_ids,
+            scaffold_patched_fields=scaffold_patched_fields,
             events=events,
             repair_metrics=repair_metrics,
         )
@@ -100,6 +115,14 @@ def run_navigation(
             output, validation, field_provenance = field_result
     if not validation.passed:
         output = canned_navigator_output(intake, rule_results, retrieved, floor)
+        fallback_scaffold = apply_navigation_scaffolding(
+            output,
+            retrieved_cards=retrieved,
+            rule_results=rule_results,
+            urgency_floor=floor,
+        )
+        output = fallback_scaffold.output
+        scaffold_patched_fields.update(fallback_scaffold.patched_fields)
         validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
         fallback_reason = fallback_reason or "navigator_validation_failure"
         field_provenance = deterministic_field_provenance()
@@ -123,6 +146,7 @@ def run_navigation(
             "fallback_reason": fallback_reason,
             "field_level_fallback_used": field_level_fallback_used,
             "strict_validation": True,
+            "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
             **repair_metrics,
         },
         navigator_output=output,
@@ -172,10 +196,18 @@ def _try_field_level_model_output(
     rule_results: list[dict[str, Any]],
     retrieved: list[dict[str, Any]],
     known_cards: set[str],
+    scaffold_patched_fields: set[str],
     events: list[str],
     repair_metrics: dict[str, Any],
 ) -> tuple[dict[str, Any], Any, dict[str, str]] | None:
     fallback_output = canned_navigator_output(intake, rule_results, retrieved, floor)
+    fallback_scaffold = apply_navigation_scaffolding(
+        fallback_output,
+        retrieved_cards=retrieved,
+        rule_results=rule_results,
+        urgency_floor=floor,
+    )
+    fallback_output = fallback_scaffold.output
     accepted_raw_fields = accepted_raw_fields_from_failures(validation_failures)
     repair_context = {
         "intake": intake,
@@ -191,6 +223,7 @@ def _try_field_level_model_output(
         previous_output=raw_output,
         failures=validation_failures,
         urgency_floor=floor,
+        required_observation_targets=required_observation_targets(retrieved),
     )
     repair_metrics["repair_scope_count"] = len(focused_prompts)
     repair_metrics["repair_scopes"] = [focused_prompt.scope.name for focused_prompt in focused_prompts]
@@ -233,6 +266,10 @@ def _try_field_level_model_output(
         if merged_validation.passed:
             if merge_result.provenance == deterministic_field_provenance():
                 continue
+            _mark_deterministic_patch_fields(
+                merge_result.provenance,
+                scaffold_patched_fields | fallback_scaffold.patched_fields,
+            )
             events.append(event_text)
             return merge_result.output, merged_validation, merge_result.provenance
     events.append("navigator retry failed validation")
@@ -248,6 +285,12 @@ def _empty_repair_metrics() -> dict[str, Any]:
         "repair_latency_ms": 0.0,
         "repair_scopes": [],
     }
+
+
+def _mark_deterministic_patch_fields(provenance: dict[str, str], fields: set[str]) -> None:
+    for field in fields:
+        if field in provenance:
+            provenance[field] = DETERMINISTIC_FALLBACK
 
 
 def _repair_prompt(
