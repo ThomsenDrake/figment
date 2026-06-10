@@ -17,7 +17,11 @@ from .field_provenance import (
 )
 from .focused_repair import build_focused_repair_prompts
 from .model_client import ModelClient, ModelClientError, canned_navigator_output
-from .observation_targets import apply_navigation_scaffolding, required_observation_targets
+from .observation_targets import (
+    NavigationScaffoldResult,
+    apply_navigation_scaffolding,
+    required_observation_targets,
+)
 from .prompt_builder import build_prompt
 from .retrieval import known_card_ids, query_from_intake, search_protocol_cards
 from .trace import FigmentTrace, scrub_audio_metadata, stable_hash, write_trace
@@ -55,6 +59,10 @@ def run_navigation(
     fallback_reason: str | None = None
     field_provenance: dict[str, str] = {}
     scaffold_patched_fields: set[str] = set()
+    filled_required_observation_ids: list[str] = []
+    model_selected_required_observation_ids: list[str] = []
+    invalid_selected_required_observation_ids: list[str] = []
+    stripped_trace_only_fields: list[str] = []
     repair_metrics: dict[str, Any] = _empty_repair_metrics()
     try:
         output = client.generate_json(
@@ -87,9 +95,15 @@ def run_navigation(
         urgency_floor=floor,
     )
     output = scaffold_result.output
-    scaffold_patched_fields = scaffold_result.patched_fields
-    if scaffold_result.filled_required_observation_ids:
-        events.append("required-observation targets filled deterministically")
+    _absorb_scaffold_trace(
+        scaffold_result,
+        scaffold_patched_fields=scaffold_patched_fields,
+        filled_required_observation_ids=filled_required_observation_ids,
+        model_selected_required_observation_ids=model_selected_required_observation_ids,
+        invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+        stripped_trace_only_fields=stripped_trace_only_fields,
+        events=events,
+    )
     validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
     if validation.passed and not field_provenance:
         field_provenance = (
@@ -122,7 +136,15 @@ def run_navigation(
             urgency_floor=floor,
         )
         output = fallback_scaffold.output
-        scaffold_patched_fields.update(fallback_scaffold.patched_fields)
+        _absorb_scaffold_trace(
+            fallback_scaffold,
+            scaffold_patched_fields=scaffold_patched_fields,
+            filled_required_observation_ids=filled_required_observation_ids,
+            model_selected_required_observation_ids=model_selected_required_observation_ids,
+            invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+            stripped_trace_only_fields=stripped_trace_only_fields,
+            events=events,
+        )
         validation = _validate_output(output, card_ids, floor, intake, rule_results, retrieved)
         fallback_reason = fallback_reason or "navigator_validation_failure"
         field_provenance = deterministic_field_provenance()
@@ -147,6 +169,10 @@ def run_navigation(
             "field_level_fallback_used": field_level_fallback_used,
             "strict_validation": True,
             "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
+            "filled_required_observation_ids": filled_required_observation_ids,
+            "model_selected_required_observation_ids": model_selected_required_observation_ids,
+            "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
+            "stripped_trace_only_fields": stripped_trace_only_fields,
             **repair_metrics,
         },
         navigator_output=output,
@@ -285,6 +311,35 @@ def _empty_repair_metrics() -> dict[str, Any]:
         "repair_latency_ms": 0.0,
         "repair_scopes": [],
     }
+
+
+def _absorb_scaffold_trace(
+    result: NavigationScaffoldResult,
+    *,
+    scaffold_patched_fields: set[str],
+    filled_required_observation_ids: list[str],
+    model_selected_required_observation_ids: list[str],
+    invalid_selected_required_observation_ids: list[str],
+    stripped_trace_only_fields: list[str],
+    events: list[str],
+) -> None:
+    scaffold_patched_fields.update(result.patched_fields)
+    _extend_unique(filled_required_observation_ids, result.filled_required_observation_ids)
+    _extend_unique(model_selected_required_observation_ids, result.model_selected_required_observation_ids)
+    _extend_unique(invalid_selected_required_observation_ids, result.invalid_selected_required_observation_ids)
+    _extend_unique(stripped_trace_only_fields, result.stripped_trace_only_fields)
+    if result.stripped_trace_only_fields:
+        events.append("trace-only required-observation target ids stripped")
+    if result.invalid_selected_required_observation_ids:
+        events.append("invalid required-observation target ids ignored")
+    if result.filled_required_observation_ids:
+        events.append("required-observation targets filled deterministically")
+
+
+def _extend_unique(items: list[str], values: list[str]) -> None:
+    for value in values:
+        if value not in items:
+            items.append(value)
 
 
 def _mark_deterministic_patch_fields(provenance: dict[str, str], fields: set[str]) -> None:

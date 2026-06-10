@@ -30,3 +30,13 @@ scratch/
 .codex-workflows/runs/
 .playwright-cli/
 output/playwright/
+
+# Generated local training/evidence artifacts
+data/finetune/
+tools/
+traces/local_4b_evidence_*/
+traces/local_4b_finetuned_evidence_*/
+traces/local_4b_finetuned_v*_evidence_*/
+traces/local_4b_finetuned_v*_field_holdout_*/
+traces/local_4b_smoke_debug_*.json
+traces/local_asr_parakeet_evidence_*/

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Any
 
 
 CARD_IDS_EXEMPT_FROM_OBSERVATION_TARGETS = {"SAFETY-BOUNDARIES-v1", "REFERRAL-SBAR-v1"}
+TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY = "selected_required_observation_ids"
 URGENCY_ORDER = {"routine": 0, "monitor": 1, "urgent": 2, "emergency": 3}
 TARGET_TOKEN_STOPWORDS = {
     "a",
@@ -33,6 +34,9 @@ class NavigationScaffoldResult:
     output: dict[str, Any]
     patched_fields: set[str]
     filled_required_observation_ids: list[str]
+    model_selected_required_observation_ids: list[str] = field(default_factory=list)
+    invalid_selected_required_observation_ids: list[str] = field(default_factory=list)
+    stripped_trace_only_fields: list[str] = field(default_factory=list)
 
 
 def required_observation_targets(retrieved_cards: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -104,8 +108,15 @@ def apply_navigation_scaffolding(
 
     patched = deepcopy(dict(output))
     patched_fields: set[str] = set()
-    retrieved_ids = _retrieved_card_ids(retrieved_cards)
+    retrieved_card_list = list(retrieved_cards)
+    retrieved_ids = _retrieved_card_ids(retrieved_card_list)
     fired_card_ids = _fired_rule_card_ids(rule_results)
+    targets = required_observation_targets(retrieved_card_list)
+    (
+        model_selected_required_observation_ids,
+        invalid_selected_required_observation_ids,
+        stripped_trace_only_fields,
+    ) = _pop_trace_only_required_observation_ids(patched, targets)
 
     current_urgency = str(patched.get("protocol_urgency", "")).strip()
     if not _urgency_at_least(current_urgency, urgency_floor):
@@ -127,7 +138,11 @@ def apply_navigation_scaffolding(
         patched["candidate_protocol_pathways"] = pathways
         patched_fields.add("candidate_protocol_pathways")
 
-    filled_ids = _fill_required_observation_targets(patched, required_observation_targets(retrieved_cards))
+    filled_ids = _fill_required_observation_targets(
+        patched,
+        targets,
+        selected_required_observation_ids=model_selected_required_observation_ids,
+    )
     if filled_ids:
         patched_fields.update({"missing_info_to_collect", "next_observations_to_collect"})
 
@@ -135,6 +150,9 @@ def apply_navigation_scaffolding(
         output=patched,
         patched_fields=patched_fields,
         filled_required_observation_ids=filled_ids,
+        model_selected_required_observation_ids=model_selected_required_observation_ids,
+        invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+        stripped_trace_only_fields=stripped_trace_only_fields,
     )
 
 
@@ -154,8 +172,14 @@ def targets_for_failure_cards(
     return selected
 
 
-def _fill_required_observation_targets(output: dict[str, Any], targets: list[dict[str, Any]]) -> list[str]:
+def _fill_required_observation_targets(
+    output: dict[str, Any],
+    targets: list[dict[str, Any]],
+    *,
+    selected_required_observation_ids: Iterable[str] = (),
+) -> list[str]:
     source_cards = {str(card_id) for card_id in output.get("source_cards", []) if str(card_id)}
+    selected_target_ids = {str(target_id) for target_id in selected_required_observation_ids if str(target_id)}
     actionable_targets = [
         target
         for target in targets
@@ -173,7 +197,8 @@ def _fill_required_observation_targets(output: dict[str, Any], targets: list[dic
     missing_targets = [
         target
         for target in actionable_targets
-        if not _target_present(target, combined_text, combined_tokens)
+        if str(target["id"]) not in selected_target_ids
+        and not _target_present(target, combined_text, combined_tokens)
     ]
     if not missing_targets:
         return []
@@ -193,6 +218,29 @@ def _target_present(target: Mapping[str, Any], text: str, tokens: set[str]) -> b
         return True
     normalized_target = _normalize_text(str(target.get("display_text", "")))
     return bool(normalized_target and normalized_target in _normalize_text(text))
+
+
+def _pop_trace_only_required_observation_ids(
+    output: dict[str, Any],
+    targets: Iterable[Mapping[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    if TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY not in output:
+        return [], [], []
+
+    raw_value = output.pop(TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY)
+    target_ids = {str(target.get("id", "")).strip() for target in targets}
+    target_ids.discard("")
+    selected: list[str] = []
+    invalid: list[str] = []
+    for target_id in _string_list(raw_value):
+        normalized = str(target_id).strip()
+        if not normalized:
+            continue
+        if normalized in target_ids:
+            _append_unique(selected, normalized)
+        else:
+            _append_unique(invalid, normalized)
+    return selected, invalid, [TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY]
 
 
 def _target_tokens(value: Any) -> list[str]:
@@ -281,6 +329,11 @@ def _string_list(value: Any) -> list[str]:
     return []
 
 
+def _append_unique(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)
+
+
 def _negated_phrases(text: str) -> list[str]:
     phrases: list[str] = []
     for match in re.finditer(r"\b(no|denies|denied|without)\s+([^,.;]+)", text, re.IGNORECASE):
@@ -294,6 +347,7 @@ def _negated_phrases(text: str) -> list[str]:
 
 __all__ = [
     "NavigationScaffoldResult",
+    "TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY",
     "apply_navigation_scaffolding",
     "build_case_fact_ledger",
     "required_observation_targets",

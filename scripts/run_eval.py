@@ -26,7 +26,11 @@ from figment.field_provenance import (  # noqa: E402
 )  # noqa: E402
 from figment.focused_repair import build_focused_repair_prompts  # noqa: E402
 from figment.model_client import ModelClient, ModelClientError, canned_navigator_output  # noqa: E402
-from figment.observation_targets import apply_navigation_scaffolding, required_observation_targets  # noqa: E402
+from figment.observation_targets import (  # noqa: E402
+    NavigationScaffoldResult,
+    apply_navigation_scaffolding,
+    required_observation_targets,
+)
 from figment.prompt_builder import build_prompt  # noqa: E402
 from figment.retrieval import known_card_ids, query_from_intake, search_protocol_cards  # noqa: E402
 from figment.rules import run_red_flag_checks  # noqa: E402
@@ -109,6 +113,9 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
     field_provenance: dict[str, str] = {}
     scaffold_patched_fields: set[str] = set()
     filled_required_observation_ids: list[str] = []
+    model_selected_required_observation_ids: list[str] = []
+    invalid_selected_required_observation_ids: list[str] = []
+    stripped_trace_only_fields: list[str] = []
 
     context = {
         "intake": intake,
@@ -120,13 +127,21 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
     if config.model_backend == "canned":
         fallback_reason = "canned_backend"
         fallback_used = True
-        fallback_output, fallback_validation = _run_fallback(
+        fallback_output, fallback_validation, fallback_scaffold = _run_fallback(
             intake,
             rule_results,
             retrieved,
             floor,
             known_cards,
             retrieved_ids,
+        )
+        _absorb_scaffold_trace(
+            fallback_scaffold,
+            scaffold_patched_fields=scaffold_patched_fields,
+            filled_required_observation_ids=filled_required_observation_ids,
+            model_selected_required_observation_ids=model_selected_required_observation_ids,
+            invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+            stripped_trace_only_fields=stripped_trace_only_fields,
         )
         final_output = fallback_output
         final_validation = fallback_validation
@@ -142,8 +157,14 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                 urgency_floor=floor,
             )
             raw_output = scaffold_result.output
-            scaffold_patched_fields = scaffold_result.patched_fields
-            filled_required_observation_ids = scaffold_result.filled_required_observation_ids
+            _absorb_scaffold_trace(
+                scaffold_result,
+                scaffold_patched_fields=scaffold_patched_fields,
+                filled_required_observation_ids=filled_required_observation_ids,
+                model_selected_required_observation_ids=model_selected_required_observation_ids,
+                invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+                stripped_trace_only_fields=stripped_trace_only_fields,
+            )
             raw_validation = _validate_output(raw_output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
         except ModelClientError as exc:
             raw_validation = {"passed": False, "failures": [f"model backend error: {exc}"]}
@@ -156,7 +177,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
             _mark_deterministic_patch_fields(field_provenance, scaffold_patched_fields)
         else:
             if raw_output is not None:
-                fallback_output, fallback_validation = _run_fallback(
+                fallback_output, fallback_validation, fallback_scaffold = _run_fallback(
                     intake,
                     rule_results,
                     retrieved,
@@ -190,21 +211,49 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                     final_output = merged_output
                     final_validation = merged_validation
                     field_provenance = merged_field_provenance
+                    if (
+                        field_provenance.get("missing_info_to_collect") == DETERMINISTIC_FALLBACK
+                        or field_provenance.get("next_observations_to_collect") == DETERMINISTIC_FALLBACK
+                    ):
+                        _absorb_scaffold_trace(
+                            fallback_scaffold,
+                            scaffold_patched_fields=scaffold_patched_fields,
+                            filled_required_observation_ids=filled_required_observation_ids,
+                            model_selected_required_observation_ids=model_selected_required_observation_ids,
+                            invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+                            stripped_trace_only_fields=stripped_trace_only_fields,
+                        )
                 else:
                     fallback_reason = fallback_reason or "navigator_validation_failure"
                     fallback_used = True
                     final_output = fallback_output
                     final_validation = fallback_validation
                     field_provenance = deterministic_field_provenance()
+                    _absorb_scaffold_trace(
+                        fallback_scaffold,
+                        scaffold_patched_fields=scaffold_patched_fields,
+                        filled_required_observation_ids=filled_required_observation_ids,
+                        model_selected_required_observation_ids=model_selected_required_observation_ids,
+                        invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+                        stripped_trace_only_fields=stripped_trace_only_fields,
+                    )
             else:
                 fallback_used = True
-                fallback_output, fallback_validation = _run_fallback(
+                fallback_output, fallback_validation, fallback_scaffold = _run_fallback(
                     intake,
                     rule_results,
                     retrieved,
                     floor,
                     known_cards,
                     retrieved_ids,
+                )
+                _absorb_scaffold_trace(
+                    fallback_scaffold,
+                    scaffold_patched_fields=scaffold_patched_fields,
+                    filled_required_observation_ids=filled_required_observation_ids,
+                    model_selected_required_observation_ids=model_selected_required_observation_ids,
+                    invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+                    stripped_trace_only_fields=stripped_trace_only_fields,
                 )
                 final_output = fallback_output
                 final_validation = fallback_validation
@@ -226,6 +275,9 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "field_level_fallback_used": field_level_fallback_used,
         "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
         "filled_required_observation_ids": filled_required_observation_ids,
+        "model_selected_required_observation_ids": model_selected_required_observation_ids,
+        "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
+        "stripped_trace_only_fields": stripped_trace_only_fields,
     }
     trace_payload = {
         "case_id": case["case_id"],
@@ -268,6 +320,9 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "field_level_fallback_used": field_level_fallback_used,
         "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
         "filled_required_observation_ids": filled_required_observation_ids,
+        "model_selected_required_observation_ids": model_selected_required_observation_ids,
+        "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
+        "stripped_trace_only_fields": stripped_trace_only_fields,
         "raw_configured_model_attempted": raw_attempted,
         "raw_configured_model_success": raw_success,
         "repair_attempted": repair_attempted,
@@ -299,16 +354,39 @@ def _run_fallback(
     floor: str,
     known_cards: set[str],
     retrieved_ids: list[str],
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], NavigationScaffoldResult]:
     output = canned_navigator_output(intake, rule_results, retrieved, floor)
-    output = apply_navigation_scaffolding(
+    scaffold = apply_navigation_scaffolding(
         output,
         retrieved_cards=retrieved,
         rule_results=rule_results,
         urgency_floor=floor,
-    ).output
+    )
+    output = scaffold.output
     validation = _validate_output(output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
-    return output, validation
+    return output, validation, scaffold
+
+
+def _absorb_scaffold_trace(
+    result: NavigationScaffoldResult,
+    *,
+    scaffold_patched_fields: set[str],
+    filled_required_observation_ids: list[str],
+    model_selected_required_observation_ids: list[str],
+    invalid_selected_required_observation_ids: list[str],
+    stripped_trace_only_fields: list[str],
+) -> None:
+    scaffold_patched_fields.update(result.patched_fields)
+    _extend_unique(filled_required_observation_ids, result.filled_required_observation_ids)
+    _extend_unique(model_selected_required_observation_ids, result.model_selected_required_observation_ids)
+    _extend_unique(invalid_selected_required_observation_ids, result.invalid_selected_required_observation_ids)
+    _extend_unique(stripped_trace_only_fields, result.stripped_trace_only_fields)
+
+
+def _extend_unique(items: list[str], values: list[str]) -> None:
+    for value in values:
+        if value not in items:
+            items.append(value)
 
 
 def _validate_output(

@@ -319,6 +319,56 @@ class ObservationThinModelClient:
         }
 
 
+class SelectedObservationIdsModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": _emergency_chest_pain_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Chest pain with shortness of breath reported.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "CHEST-PAIN-ESCALATION-v1",
+                    "reason_relevant": "Chest pain with shortness of breath was reported.",
+                }
+            ],
+            "missing_info_to_collect": [
+                "Ask the patient to describe the pain in plain words.",
+                "Ask when the pain started and whether it changed.",
+                "available vital signs",
+            ],
+            "next_observations_to_collect": [],
+            "conflicts_or_uncertainties": [],
+            "responder_checklist": ["Escalate per cited local protocol."],
+            "do_not_do": ["Do not diagnose."],
+            "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+            "handoff_note_sbar": {
+                "situation": "Chest pain with shortness of breath.",
+                "background": "Mobile clinic adult case.",
+                "assessment_observations_only": "Crushing chest pain and shortness of breath reported. HR 118.",
+                "handoff_request": "Escalate per protocol.",
+            },
+            "responder_plain_language_script": "I am going to keep checking observations and follow the local escalation path.",
+            "safety_boundary": "This output does not diagnose or prescribe and does not replace local protocol.",
+            "selected_required_observation_ids": [
+                "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+                "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+                "NOT-A-REAL-TARGET",
+            ],
+        }
+
+
 def _confirmed_chest_pain_intake() -> dict[str, Any]:
     return {
         "setting": "mobile clinic",
@@ -603,4 +653,42 @@ def test_run_navigation_fills_required_observation_targets_without_counting_as_m
     assert trace.model_route["field_level_fallback_used"] is True
     assert trace.field_provenance["missing_info_to_collect"] == "deterministic_fallback"
     assert trace.field_provenance["next_observations_to_collect"] == "deterministic_fallback"
+    assert trace.model_route["filled_required_observation_ids"] == [
+        "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+        "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+        "CHEST-PAIN-ESCALATION-v1::required_observation::3",
+    ]
     assert any("required-observation targets filled" in event for event in trace.events)
+
+
+def test_run_navigation_strips_and_traces_selected_required_observation_ids(monkeypatch) -> None:
+    SelectedObservationIdsModelClient.calls = 0
+    monkeypatch.setattr(navigator, "ModelClient", SelectedObservationIdsModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_chest_pain_intake(),
+        _emergency_chest_pain_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_chest_pain_cards(),
+    )
+
+    observation_text = json.dumps(
+        output["missing_info_to_collect"] + output["next_observations_to_collect"]
+    ).lower()
+    assert SelectedObservationIdsModelClient.calls == 1
+    assert "selected_required_observation_ids" not in output
+    assert "shortness of breath report" in observation_text
+    assert "chest pain description" not in observation_text
+    assert "onset and duration" not in observation_text
+    assert trace.validator_result["passed"] is True
+    assert trace.model_route["model_selected_required_observation_ids"] == [
+        "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+        "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+    ]
+    assert trace.model_route["invalid_selected_required_observation_ids"] == ["NOT-A-REAL-TARGET"]
+    assert trace.model_route["stripped_trace_only_fields"] == ["selected_required_observation_ids"]
+    assert trace.model_route["filled_required_observation_ids"] == [
+        "CHEST-PAIN-ESCALATION-v1::required_observation::3"
+    ]
+    assert trace.field_provenance["missing_info_to_collect"] == "deterministic_fallback"
+    assert any("trace-only required-observation target ids stripped" in event for event in trace.events)
