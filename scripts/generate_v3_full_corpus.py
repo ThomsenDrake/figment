@@ -61,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-repair", action="store_true")
     parser.add_argument("--only-generate", action="store_true")
     parser.add_argument("--log-rejections", action="store_true")
+    parser.add_argument("--dry-run", action="store_true", help="Use deterministic fallback rows instead of teacher calls.")
     args = parser.parse_args(argv)
 
     if args.navigator_count <= 0:
@@ -241,6 +242,8 @@ def generate_one_shard(args: argparse.Namespace, spec: ShardSpec) -> dict[str, A
     ]
     if args.log_rejections:
         cmd.append("--log-rejections")
+    if args.dry_run:
+        cmd.append("--dry-run")
 
     spec.log.parent.mkdir(parents=True, exist_ok=True)
     with spec.log.open("a", encoding="utf-8") as log:

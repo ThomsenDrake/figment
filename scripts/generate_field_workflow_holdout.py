@@ -22,6 +22,7 @@ from scripts.generate_finetune_data import generate_case_spec  # noqa: E402
 from scripts.generate_finetune_data import prepare_case  # noqa: E402
 from scripts.generate_finetune_data import safety_boundary_for_version  # noqa: E402
 from scripts.generate_finetune_data import stable_hash  # noqa: E402
+from figment.eval_metrics import bucket_expected_observation_cues  # noqa: E402
 from figment.retrieval import load_protocol_cards  # noqa: E402
 
 
@@ -107,6 +108,7 @@ def _holdout_row(
     prompt_template_hash: str,
 ) -> dict[str, Any]:
     workflow_category = str(record.get("workflow_category") or record.get("failure_class") or "field_workflow")
+    cue_buckets = bucket_expected_observation_cues(record["expected_missing_observations"])
     return {
         "case_id": holdout_case_id,
         "dataset_version": HOLDOUT_VERSION,
@@ -119,6 +121,9 @@ def _holdout_row(
         "expected_source_card_ids": record["expected_source_card_ids"],
         "expected_candidate_pathway_card_ids": record["expected_candidate_pathway_card_ids"],
         "expected_missing_observations": record["expected_missing_observations"],
+        "expected_model_observation_cues": cue_buckets["model"],
+        "expected_handoff_cues": cue_buckets["handoff"],
+        "expected_harness_evidence_cues": cue_buckets["harness"],
         "workflow_priority_observations": record.get("workflow_priority_observations", []),
         "retrieved_card_ids": record["retrieved_card_ids"],
         "tags": record.get("tags", []),

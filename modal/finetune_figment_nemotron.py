@@ -22,6 +22,7 @@ APP_NAME = "figment-nemotron-4b-lora"
 DEFAULT_DATASET_VERSION = "figment_sft_v1"
 DEFAULT_BASE_MODEL_ID = "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
 DEFAULT_DATASET_PATH = "data/finetune/figment_sft_v1.jsonl"
+DEFAULT_TRAIN_GPU = "H100"
 DATA_VOLUME_NAME = "figment-sft-data"
 MODEL_CACHE_VOLUME_NAME = "figment-model-cache"
 CHECKPOINT_VOLUME_NAME = "figment-checkpoints"
@@ -85,6 +86,8 @@ def build_train_config(
     dataset_version: str = DEFAULT_DATASET_VERSION,
     base_model_id: str = DEFAULT_BASE_MODEL_ID,
     output_name: str = "pilot-lora",
+    resume_adapter_name: str = "",
+    resume_adapter_dataset_version: str = "",
     smoke: bool = False,
     max_steps: int = 40,
     max_seq_length: int = 16384,
@@ -107,6 +110,13 @@ def build_train_config(
         "base_model_id": base_model_id,
         "output_name": output_name,
         "output_dir": f"{CHECKPOINT_DIR}/{dataset_version}/{output_name}",
+        "resume_adapter_name": resume_adapter_name,
+        "resume_adapter_dataset_version": resume_adapter_dataset_version or dataset_version,
+        "resume_adapter_dir": (
+            f"{CHECKPOINT_DIR}/{resume_adapter_dataset_version or dataset_version}/{resume_adapter_name}"
+            if resume_adapter_name
+            else ""
+        ),
         "max_steps": max_steps,
         "max_seq_length": max_seq_length,
         "learning_rate": learning_rate,
@@ -169,7 +179,7 @@ def stage_dataset(dataset_version: str, train_jsonl: str, validation_jsonl: str,
 
 @app.function(
     image=training_image,
-    gpu="L40S",
+    gpu=DEFAULT_TRAIN_GPU,
     cpu=8,
     memory=65536,
     ephemeral_disk=524288,
@@ -188,6 +198,7 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     import torch
     from datasets import Dataset
     from peft import LoraConfig
+    from peft import PeftModel
     from peft import TaskType
     from peft import get_peft_model
     from transformers import AutoModelForCausalLM
@@ -195,6 +206,13 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     from transformers import DataCollatorForSeq2Seq
     from transformers import Trainer
     from transformers import TrainingArguments
+
+    runtime_gpu = {
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count(),
+        "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "",
+    }
+    print(json.dumps({"runtime_gpu": runtime_gpu}, sort_keys=True), flush=True)
 
     paths = dataset_volume_paths(str(config["dataset_version"]))
     train_rows = _read_jsonl(Path(paths["train"]))
@@ -233,15 +251,25 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
 
-    lora_config = LoraConfig(
-        r=int(config["lora_r"]),
-        lora_alpha=int(config["lora_alpha"]),
-        lora_dropout=float(config["lora_dropout"]),
-        bias="none",
-        task_type=TaskType.CAUSAL_LM,
-        target_modules="all-linear",
-    )
-    model = get_peft_model(model, lora_config)
+    resume_adapter_dir = str(config.get("resume_adapter_dir") or "")
+    if resume_adapter_dir:
+        if not Path(resume_adapter_dir).exists():
+            raise ValueError(f"resume adapter not found at {resume_adapter_dir}")
+        model = PeftModel.from_pretrained(
+            model,
+            resume_adapter_dir,
+            is_trainable=True,
+        )
+    else:
+        lora_config = LoraConfig(
+            r=int(config["lora_r"]),
+            lora_alpha=int(config["lora_alpha"]),
+            lora_dropout=float(config["lora_dropout"]),
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+            target_modules="all-linear",
+        )
+        model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     output_dir = str(config["output_dir"])
@@ -297,6 +325,7 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
         "tokenized_validation_rows": len(validation_dataset),
         "metrics": metrics,
         "adapter_path": output_dir,
+        "runtime_gpu": runtime_gpu,
     }
     Path(output_dir, "figment_training_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -309,7 +338,7 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
 
 @app.function(
     image=training_image,
-    gpu="L40S",
+    gpu=DEFAULT_TRAIN_GPU,
     cpu=8,
     memory=65536,
     ephemeral_disk=524288,
@@ -390,11 +419,20 @@ def main(
     dataset: str = DEFAULT_DATASET_PATH,
     prepared_dir: str = "",
     output_name: str = "pilot-lora",
+    resume_adapter_name: str = "",
+    resume_adapter_dataset_version: str = "",
     smoke: bool = False,
     skip_stage: bool = False,
     max_steps: int = 40,
     max_seq_length: int = 16384,
-    gpu: str = "L40S",
+    learning_rate: float = 1e-4,
+    lora_r: int = 16,
+    lora_alpha: int = 32,
+    lora_dropout: float = 0.05,
+    gradient_accumulation_steps: int = 8,
+    validation_steps: int = 25,
+    save_steps: int = 50,
+    gpu: str = DEFAULT_TRAIN_GPU,
     merge_only: bool = False,
     adapter_name: str = "pilot-20260608",
     merged_name: str = "",
@@ -413,10 +451,20 @@ def main(
     config = build_train_config(
         dataset_version=dataset_version,
         output_name=output_name,
+        resume_adapter_name=resume_adapter_name,
+        resume_adapter_dataset_version=resume_adapter_dataset_version,
         smoke=smoke,
         max_steps=max_steps,
         max_seq_length=max_seq_length,
+        learning_rate=learning_rate,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        validation_steps=validation_steps,
+        save_steps=save_steps,
     )
+    config["requested_gpu"] = gpu
 
     if not skip_stage:
         from scripts.prepare_modal_finetune_dataset import prepare_dataset
@@ -446,7 +494,16 @@ def main(
                         "dashboard_url": train_call.get_dashboard_url(),
                         "dataset_version": dataset_version,
                         "output_name": output_name,
+                        "resume_adapter_name": resume_adapter_name,
+                        "resume_adapter_dataset_version": resume_adapter_dataset_version,
                         "max_steps": max_steps,
+                        "learning_rate": learning_rate,
+                        "lora_r": lora_r,
+                        "lora_alpha": lora_alpha,
+                        "lora_dropout": lora_dropout,
+                        "gradient_accumulation_steps": gradient_accumulation_steps,
+                        "validation_steps": config["validation_steps"],
+                        "save_steps": config["save_steps"],
                         "gpu": gpu,
                     }
                 },

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from figment.config import FigmentConfig
 from scripts import run_eval
@@ -10,6 +11,89 @@ INITIAL_CASES = Path("data/eval/initial_handwritten_cases.jsonl")
 
 def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+class _FakeRule:
+    def __init__(self, payload: dict[str, str]) -> None:
+        self.payload = payload
+
+    def to_dict(self) -> dict[str, str]:
+        return dict(self.payload)
+
+
+class _FiredCardOmittedModelClient:
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": [_stroke_rule()],
+            "intake_facts": [
+                {
+                    "fact": "Sudden one-sided weakness and trouble speaking.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "SAFETY-BOUNDARIES-v1",
+                    "reason_relevant": "Safety boundaries are always relevant.",
+                }
+            ],
+            "missing_info_to_collect": ["blood pressure if available"],
+            "next_observations_to_collect": ["speech and one-sided weakness status"],
+            "conflicts_or_uncertainties": ["Blood pressure not yet measured."],
+            "responder_checklist": ["Keep deterministic red flags visible."],
+            "do_not_do": ["Do not diagnose.", "Do not prescribe."],
+            "source_cards": ["SAFETY-BOUNDARIES-v1", "REFERRAL-SBAR-v1"],
+            "handoff_note_sbar": {
+                "situation": "one-sided weakness",
+                "background": "Age 56. Not pregnant.",
+                "assessment_observations_only": "Sudden one-sided weakness and trouble speaking. Stroke sign red flag fired.",
+                "handoff_request": "Request emergency review per cited local protocol cards.",
+            },
+            "responder_plain_language_script": "I am going to keep the stroke red flag visible and request emergency review.",
+            "safety_boundary": "Prototype protocol navigation only; no diagnosis or treatment order.",
+        }
+
+
+def _stroke_rule() -> dict[str, str]:
+    return {
+        "rule_id": "STROKE-001",
+        "label": "Stroke sign",
+        "urgency": "emergency",
+        "evidence": "one-sided weakness",
+        "card_id": "STROKE-SIGNS-v1",
+    }
+
+
+def _retrieved_without_stroke_cards() -> list[dict[str, Any]]:
+    return [
+        {
+            "card_id": "SAFETY-BOUNDARIES-v1",
+            "title": "Safety boundaries",
+            "score": 1.0,
+            "source": "test",
+            "card": {
+                "card_id": "SAFETY-BOUNDARIES-v1",
+                "title": "Safety boundaries",
+                "required_observations": [],
+            },
+        },
+        {
+            "card_id": "REFERRAL-SBAR-v1",
+            "title": "Referral SBAR",
+            "score": 0.9,
+            "source": "test",
+            "card": {
+                "card_id": "REFERRAL-SBAR-v1",
+                "title": "Referral SBAR",
+                "required_observations": [],
+            },
+        },
+    ]
 
 
 def test_canned_eval_runner_keeps_fallback_out_of_model_competence(tmp_path: Path) -> None:
@@ -56,9 +140,14 @@ def test_canned_eval_runner_keeps_fallback_out_of_model_competence(tmp_path: Pat
     assert first["forbidden_behavior"]
     assert first["actual_protocol_urgency"] == first["final_output"]["protocol_urgency"]
     assert first["actual_source_card_ids"] == first["final_output"]["source_cards"]
+    assert "expected_candidate_pathway_card_ids" in first
+    assert first["harness_evidence"]["validator_status"] == "passed"
+    assert first["harness_evidence"]["fallback_tier"] == "canned"
+    assert first["final_output"]["harness_evidence"] == first["harness_evidence"]
     assert "expected_label_score" in first
     assert first["expected_label_score"]["red_flags_match"] is True
     assert first["expected_label_score"]["min_urgency_met"] is True
+    assert "harness_evidence_cues_visible" in first["expected_label_score"]
     assert first["field_provenance"]["protocol_urgency"] == "deterministic_fallback"
     assert summary["records_with_field_provenance"] == 10
     assert summary["model_field_pass_rate"] == 0.0
@@ -70,6 +159,48 @@ def test_canned_eval_runner_keeps_fallback_out_of_model_competence(tmp_path: Pat
     assert first["raw_model_output"] is None
     assert first["repaired_output"] is None
     assert isinstance(first["fallback_output"], dict)
+    assert (output_path.parent / "eval_summary.json").exists()
+    assert (output_path.parent / "eval_evidence_manifest.json").exists()
+    manifest = json.loads((output_path.parent / "eval_evidence_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["all_trace_hashes_present"] is True
+    assert manifest["scored_reporting_eligible"] is True
+
+
+def test_eval_runner_repairs_known_fired_card_when_retrieval_missed_it(monkeypatch) -> None:
+    monkeypatch.setattr(run_eval, "ModelClient", _FiredCardOmittedModelClient)
+    monkeypatch.setattr(run_eval, "run_red_flag_checks", lambda _: [_FakeRule(_stroke_rule())])
+    monkeypatch.setattr(run_eval, "search_protocol_cards", lambda *_args, **_kwargs: _retrieved_without_stroke_cards())
+
+    record = run_eval._evaluate_case(
+        {
+            "case_id": "unit-stroke-retrieval-miss",
+            "structured_intake": {
+                "setting": "mobile clinic",
+                "patient_age": "56",
+                "pregnancy_status": "not_pregnant",
+                "chief_concern": "one-sided weakness",
+                "symptoms": "Sudden one-sided weakness and trouble speaking",
+                "vitals": "blood pressure not yet measured; pulse fast",
+                "responder_note": "Adult with acute stroke-sign concern.",
+                "confirmed": True,
+            },
+            "target_protocol_card_id": "STROKE-SIGNS-v1",
+            "expected_min_protocol_urgency": "emergency",
+            "expected_red_flag_rule_ids": ["STROKE-001"],
+            "expected_source_card_ids": ["STROKE-SIGNS-v1"],
+            "expected_candidate_pathway_card_ids": ["STROKE-SIGNS-v1"],
+        },
+        FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+    )
+
+    assert record["final_validation"]["passed"] is True
+    assert record["competence_success"] is False
+    assert "STROKE-SIGNS-v1" in record["final_output"]["source_cards"]
+    assert "STROKE-SIGNS-v1" in record["actual_candidate_pathway_card_ids"]
+    assert record["field_provenance"]["source_cards"] == "deterministic_fallback"
+    assert record["field_provenance"]["candidate_protocol_pathways"] == "deterministic_fallback"
+    assert record["expected_label_score"]["target_card_in_source_cards"] is True
+    assert record["expected_label_score"]["target_card_in_candidate_pathways"] is True
 
 
 def test_eval_cli_runs_initial_cases_against_canned_without_network(tmp_path: Path) -> None:
@@ -117,4 +248,32 @@ def test_llama_eval_summary_describes_real_eval_evidence_scope(tmp_path: Path) -
     assert summary["local_llm_evidence"]["model_backend"] == "llama_cpp"
     assert summary["local_llm_evidence"]["counts_as_50_case_local_llm_competence"] is False
     assert summary["local_llm_evidence"]["competence_successes"] == 1
+    assert summary["local_llm_evidence"]["scored_reporting_eligible"] is True
+    assert summary["local_llm_evidence"]["models_endpoint"]["available"] is False
     assert "MODEL_BACKEND=llama_cpp" in summary["local_llm_evidence"]["real_eval_command"]
+
+
+def test_runtime_errors_mark_local_eval_ineligible_for_scored_reporting(tmp_path: Path) -> None:
+    summary = run_eval._summarize(
+        [
+            {
+                "raw_configured_model_success": False,
+                "repair_success": False,
+                "canned_fallback_used": True,
+                "canned_fallback_success": True,
+                "competence_success": False,
+                "raw_validation": {
+                    "passed": False,
+                    "failures": ["model backend error: http_status=500 reason=failed to find free space in the KV cache"],
+                },
+                "final_validation": {"passed": True},
+            }
+        ],
+        FigmentConfig(model_backend="llama_cpp", model_stack="local_4b_parakeet"),
+        [INITIAL_CASES],
+        tmp_path / "local-eval.jsonl",
+    )
+
+    assert summary["scored_reporting_eligible"] is False
+    assert summary["runtime_error_summary"]["server_http_500"] is True
+    assert summary["runtime_error_summary"]["kv_cache_failure"] is True

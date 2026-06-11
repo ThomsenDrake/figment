@@ -34,11 +34,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from figment.config import NVIDIA_API_BASE_URL  # noqa: E402
 from figment.config import load_config  # noqa: E402
-from figment.eval_metrics import score_expected_labels  # noqa: E402
+from figment.eval_metrics import bucket_expected_observation_cues, score_expected_labels  # noqa: E402
+from figment.harness_evidence import build_harness_evidence  # noqa: E402
 from figment.model_client import ModelClientError  # noqa: E402
 from figment.model_client import canned_navigator_output  # noqa: E402
+from figment.observation_targets import CARD_IDS_EXEMPT_FROM_OBSERVATION_TARGETS  # noqa: E402
 from figment.observation_targets import TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY  # noqa: E402
 from figment.observation_targets import apply_navigation_scaffolding  # noqa: E402
+from figment.observation_targets import required_observation_targets  # noqa: E402
 from figment.prompt_builder import REQUIRED_JSON_SKELETON  # noqa: E402
 from figment.prompt_builder import SYSTEM_PROMPT  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
@@ -96,6 +99,26 @@ V3_FAILURE_DISTRIBUTION = (
     ("low_resource_constraints", 7),
     ("workflow_repair_seed", 1),
 )
+V4_FAILURE_DISTRIBUTION = (
+    ("radio_handoff", 25),
+    ("sbar_handoff_usefulness", 22),
+    ("source_card_discipline", 14),
+    ("low_resource_constraints", 10),
+    ("missing_observation_prioritization", 10),
+    ("workflow_repair_seed", 7),
+    ("rural_clinic_intake", 4),
+    ("disaster_triage", 3),
+    ("escalation_precision", 5),
+)
+V5_FOCUSED_COUNTS = {
+    "sbar_observation_ownership": 350,
+    "required_observation_id_selection": 250,
+    "source_card_invariant": 150,
+    "noisy_field_audio_style": 100,
+    "general_regression": 250,
+}
+V5_FAILURE_DISTRIBUTION = tuple(V5_FOCUSED_COUNTS.items())
+V5_EXCLUDED_EVAL_CASE_IDS = ("field_workflow_holdout_v1-000054", "field_workflow_holdout_v1-000099")
 FORBIDDEN_BEHAVIOR = [
     "Do not diagnose.",
     "Do not prescribe, dose, administer, or start medication.",
@@ -123,6 +146,11 @@ V3_GENERIC_OUTPUT_PATTERNS = (
     re.compile(r"\bassess\s+(?:the\s+)?patient\b", re.IGNORECASE),
     re.compile(r"\bcollect\s+more\s+information\b", re.IGNORECASE),
     re.compile(r"\bcontinue\s+to\s+observe\b", re.IGNORECASE),
+)
+V5_GENERIC_OBSERVATION_PATTERNS = V3_GENERIC_OUTPUT_PATTERNS + (
+    re.compile(r"\bask\s+(?:anything|everything)\s+else\b", re.IGNORECASE),
+    re.compile(r"\bkeep\s+monitoring\b", re.IGNORECASE),
+    re.compile(r"\bcheck\s+vitals?\b", re.IGNORECASE),
 )
 V3_SBAR_FAILURE_CLASSES = {"radio_handoff", "sbar_handoff_usefulness", "workflow_repair_seed"}
 TEACHER_NOTE_MAX_TOKENS = 320
@@ -184,7 +212,18 @@ def case_index_for_attempt(attempt_index: int, *, start_index: int = 0, index_st
 def uses_v3_field_workflow_policy(dataset_version: str) -> bool:
     """Return whether a dataset version should use v3 field-workflow behavior."""
 
-    return dataset_version.startswith("figment_sft_v3") or dataset_version.startswith("field_workflow_holdout")
+    return (
+        dataset_version.startswith("figment_sft_v3")
+        or dataset_version.startswith("figment_sft_v4")
+        or uses_v5_focused_policy(dataset_version)
+        or dataset_version.startswith("field_workflow_holdout")
+    )
+
+
+def uses_v5_focused_policy(dataset_version: str) -> bool:
+    """Return whether a dataset version should use v5 focused-training behavior."""
+
+    return dataset_version.startswith("figment_sft_v5")
 
 
 def forbidden_behavior_for_version(dataset_version: str) -> list[str]:
@@ -622,6 +661,13 @@ def generate_case_spec(
     dataset_version: str = DATASET_VERSION,
 ) -> SyntheticCase:
     failure_class = _failure_class_for_index(index, dataset_version=dataset_version)
+    if uses_v5_focused_policy(dataset_version):
+        return _generate_v5_case_spec(
+            index,
+            cards_by_id,
+            dataset_version=dataset_version,
+            failure_class=failure_class,
+        )
     if uses_v3_field_workflow_policy(dataset_version):
         return _generate_v3_case_spec(
             index,
@@ -668,6 +714,78 @@ def generate_case_spec(
     )
 
 
+def _generate_v5_case_spec(
+    index: int,
+    cards_by_id: dict[str, dict[str, Any]],
+    *,
+    dataset_version: str,
+    failure_class: str,
+) -> SyntheticCase:
+    card_id = CLINICAL_CARD_IDS[index % len(CLINICAL_CARD_IDS)]
+    target = card_id
+    handoff = index % 3 == 0
+    source_index = index + 700
+
+    if failure_class == "sbar_observation_ownership":
+        target = SBAR_CARD_ID
+        handoff = True
+        source_index = index + 800
+    elif failure_class == "source_card_invariant":
+        target = ("STROKE-SIGNS-v1", "PREG-DANGER-SIGNS-v1")[index % 2]
+        card_id = target
+        handoff = index % 4 == 0
+        source_index = index + 900
+    elif failure_class == "noisy_field_audio_style":
+        handoff = index % 2 == 0
+        source_index = index + 1000
+    elif failure_class == "general_regression":
+        target = _pick([card_id, SBAR_CARD_ID, SAFETY_CARD_ID], index)
+        handoff = target == SBAR_CARD_ID or index % 4 == 0
+        source_index = index + 1100
+
+    if target == SAFETY_CARD_ID:
+        intake = _negated_intake(source_index)
+    else:
+        intake = _positive_intake(card_id, source_index, handoff=handoff)
+
+    if failure_class == "noisy_field_audio_style":
+        intake["responder_note"] = (
+            str(intake.get("responder_note") or "").strip()
+            + " Confirmed ASR-like field note: punctuation was sparse, repeated words were removed, "
+            "and the responder accepted these fields before navigation."
+        ).strip()
+        intake["transcript_quality"] = "confirmed_noisy_field_audio"
+
+    intake = _apply_v3_workflow_context(
+        intake,
+        index=index,
+        category=failure_class,
+        target_card_id=target,
+        dataset_version=dataset_version,
+    )
+    tag = _tag_for_card(card_id if target in {SAFETY_CARD_ID, SBAR_CARD_ID} else target)
+    tags = ["field_workflow", "v5", _field_tag_for_category(failure_class), tag]
+    if target == SAFETY_CARD_ID:
+        tags.append("safety_boundary")
+    if target == SBAR_CARD_ID:
+        tags.append("sbar")
+    if failure_class == "source_card_invariant":
+        tags.append("fired_rule_source_card")
+
+    if target not in cards_by_id and target not in {SAFETY_CARD_ID, SBAR_CARD_ID}:
+        raise KeyError(f"missing target card for v5 spec: {target}")
+
+    return SyntheticCase(
+        case_id=f"{dataset_version}-{index:06d}",
+        dataset_version=dataset_version,
+        failure_class=failure_class,
+        target_protocol_card_id=target,
+        structured_intake=intake,
+        tags=_dedupe(tags),
+        high_risk=True,
+    )
+
+
 def _generate_v3_case_spec(
     index: int,
     cards_by_id: dict[str, dict[str, Any]],
@@ -691,7 +809,7 @@ def _generate_v3_case_spec(
     elif failure_class == "asr_confirmed_text":
         target = card_id
         intake = _positive_intake(card_id, index + 300, handoff=index % 2 == 0)
-    elif failure_class == "escalation_precision" and index % 5 == 0:
+    elif failure_class == "escalation_precision" and (dataset_version.startswith("figment_sft_v4") or index % 5 == 0):
         target = SAFETY_CARD_ID
         intake = _negated_intake(index + 400)
     elif failure_class == "workflow_repair_seed":
@@ -701,7 +819,13 @@ def _generate_v3_case_spec(
         target = card_id
         intake = _positive_intake(card_id, index + 100, handoff=False)
 
-    intake = _apply_v3_workflow_context(intake, index=index, category=failure_class, target_card_id=target)
+    intake = _apply_v3_workflow_context(
+        intake,
+        index=index,
+        category=failure_class,
+        target_card_id=target,
+        dataset_version=dataset_version,
+    )
     tag = _tag_for_card(card_id if target in {SAFETY_CARD_ID, SBAR_CARD_ID} else target)
     tags = ["field_workflow", _field_tag_for_category(failure_class), tag]
     if target == SAFETY_CARD_ID:
@@ -730,6 +854,7 @@ def _apply_v3_workflow_context(
     index: int,
     category: str,
     target_card_id: str,
+    dataset_version: str,
 ) -> dict[str, Any]:
     updated = dict(intake)
     settings = {
@@ -743,6 +868,11 @@ def _apply_v3_workflow_context(
         "source_card_discipline": "paper protocol binder review desk",
         "low_resource_constraints": "remote aid post with limited equipment",
         "workflow_repair_seed": "handoff repair desk after weak navigator output",
+        "sbar_observation_ownership": "transport coordinator SBAR handoff desk",
+        "required_observation_id_selection": "rural intake line with sparse observations",
+        "source_card_invariant": "red-flag rule audit station",
+        "noisy_field_audio_style": "mobile clinic confirmed audio transcript desk",
+        "general_regression": "mixed field workflow review station",
     }
     supplies = {
         "rural_clinic_intake": "paper protocol binder, radio, shared BP cuff, no pulse oximeter",
@@ -755,6 +885,11 @@ def _apply_v3_workflow_context(
         "source_card_discipline": "protocol binder with relevant and distractor cards, radio",
         "low_resource_constraints": "no pulse oximeter, no BP cuff, intermittent radio only",
         "workflow_repair_seed": "previous navigator output, protocol binder, radio, paper handoff form",
+        "sbar_observation_ownership": "SBAR form, radio, paper protocol cards, receiving callback pending",
+        "required_observation_id_selection": "paper intake form, radio, basic vitals kit, two-minute queue pressure",
+        "source_card_invariant": "deterministic red-flag sheet, protocol binder, retrieval printout",
+        "noisy_field_audio_style": "accepted ASR transcript, radio, paper form, no raw audio retained",
+        "general_regression": "protocol binder, radio, sparse vitals kit, transport callback list",
     }
     goals = {
         "rural_clinic_intake": "speed intake and surface the next useful missing observations.",
@@ -767,6 +902,11 @@ def _apply_v3_workflow_context(
         "source_card_discipline": "cite only relevant retrieved cards and avoid distractor leakage.",
         "low_resource_constraints": "ask for alternatives when equipment is unavailable.",
         "workflow_repair_seed": "repair only weak fields while preserving validated facts.",
+        "sbar_observation_ownership": "make SBAR depend on model-owned observation fields, not deterministic fill.",
+        "required_observation_id_selection": "select required observation ids and render responder-facing text.",
+        "source_card_invariant": "cite every deterministic fired-rule card even when retrieval is imperfect.",
+        "noisy_field_audio_style": "handle confirmed noisy field transcript text without hallucinating facts.",
+        "general_regression": "preserve v4 strengths while avoiding locked-eval overfit.",
     }
     constraints = [
         "clinician callback delayed about 20 minutes",
@@ -785,17 +925,29 @@ def _apply_v3_workflow_context(
     updated["workflow_constraint"] = constraints[index % len(constraints)]
     updated["target_protocol_card_hint"] = target_card_id
     existing_note = str(updated.get("responder_note") or "").strip()
+    if uses_v5_focused_policy(dataset_version):
+        workflow_version_label = "V5"
+    else:
+        workflow_version_label = "V4" if dataset_version.startswith("figment_sft_v4") else "V3"
     workflow_note = (
-        f" V3 field-workflow category: {category}. "
+        f" {workflow_version_label} field-workflow category: {category}. "
         f"Goal: {updated['field_workflow_goal']} Constraint: {updated['workflow_constraint']}. "
         f"Variant {index}; synthetic and de-identified."
     )
     if category == "asr_confirmed_text":
         workflow_note += " Confirmed ASR-like text may have dropped punctuation, but responder confirmed the fields before navigation."
         updated["transcript_quality"] = "asr_like_confirmed_text"
+    if category == "noisy_field_audio_style":
+        workflow_note += " Confirmed audio-like text may be terse or repetitive, but responder accepted it before navigation."
+        updated["transcript_quality"] = "confirmed_noisy_field_audio"
     if category == "radio_handoff":
         workflow_note += " Radio message is fragmented but confirmed by the responder."
         updated["communication_channel"] = "radio_or_runner_handoff"
+    if category == "sbar_observation_ownership":
+        workflow_note += " SBAR should reuse selected observations rather than inventing assessment facts."
+        updated["communication_channel"] = "radio_or_runner_handoff"
+    if category == "source_card_invariant":
+        workflow_note += " Deterministic fired-rule card IDs are mandatory source cards even if retrieval ordering is weak."
     if category == "low_resource_constraints":
         workflow_note += " Equipment limits must be treated as current workflow constraints, not ignored."
     updated["responder_note"] = (existing_note + workflow_note).strip()
@@ -813,6 +965,10 @@ def _field_tag_for_category(category: str) -> str:
 
 
 def _failure_distribution_for_version(dataset_version: str) -> tuple[tuple[str, int], ...]:
+    if uses_v5_focused_policy(dataset_version):
+        return V5_FAILURE_DISTRIBUTION
+    if dataset_version.startswith("figment_sft_v4"):
+        return V4_FAILURE_DISTRIBUTION
     if uses_v3_field_workflow_policy(dataset_version):
         return V3_FAILURE_DISTRIBUTION
     if dataset_version == "figment_sft_v2":
@@ -1144,7 +1300,11 @@ def prepare_case(spec: SyntheticCase, cards_by_id: dict[str, dict[str, Any]]) ->
     prompt, prompt_hash = build_prompt(spec.structured_intake, retrieved, rule_results, floor)
     expected_source = _expected_source_cards(spec, rule_results, retrieved_ids)
     expected_candidates = _expected_candidate_cards(spec, rule_results)
-    expected_missing = _expected_missing_observations(spec, expected_source, cards_by_id)
+    expected_missing = _expected_missing_observations(
+        spec,
+        [card_id for card_id in expected_source if card_id in retrieved_ids],
+        cards_by_id,
+    )
     return PreparedCase(
         spec=spec,
         rule_results=rule_results,
@@ -1162,6 +1322,11 @@ def prepare_case(spec: SyntheticCase, cards_by_id: dict[str, dict[str, Any]]) ->
 
 def _harness_retrieval_gap(prepared: PreparedCase) -> dict[str, Any] | None:
     retrieved = set(prepared.retrieved_ids)
+    fired = {
+        str(rule.get("card_id", "")).strip()
+        for rule in prepared.rule_results
+        if str(rule.get("card_id", "")).strip()
+    }
     missing_rule_cards = sorted(
         {
             str(rule.get("card_id", "")).strip()
@@ -1169,7 +1334,7 @@ def _harness_retrieval_gap(prepared: PreparedCase) -> dict[str, Any] | None:
             if str(rule.get("card_id", "")).strip() and str(rule.get("card_id", "")).strip() not in retrieved
         }
     )
-    if missing_rule_cards:
+    if missing_rule_cards and not uses_v5_focused_policy(prepared.spec.dataset_version):
         return {
             "reason": "rule_card_not_retrieved_by_harness",
             "missing_card_ids": missing_rule_cards,
@@ -1178,6 +1343,8 @@ def _harness_retrieval_gap(prepared: PreparedCase) -> dict[str, Any] | None:
     missing_candidate_cards = sorted(
         card_id for card_id in prepared.expected_candidate_pathway_card_ids if card_id not in retrieved
     )
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        missing_candidate_cards = [card_id for card_id in missing_candidate_cards if card_id not in fired]
     if missing_candidate_cards:
         return {
             "reason": "target_card_not_retrieved_by_harness",
@@ -1301,7 +1468,11 @@ def _expected_source_cards(spec: SyntheticCase, rule_results: list[dict[str, Any
     ids = [spec.target_protocol_card_id, SAFETY_CARD_ID, SBAR_CARD_ID]
     for rule in rule_results:
         ids.append(str(rule.get("card_id", "")))
-    return [card_id for card_id in _dedupe(ids) if card_id in retrieved_ids]
+    allowed = set(retrieved_ids)
+    if uses_v5_focused_policy(spec.dataset_version):
+        allowed.update(str(rule.get("card_id", "")).strip() for rule in rule_results)
+        allowed.discard("")
+    return [card_id for card_id in _dedupe(ids) if card_id in allowed]
 
 
 def _expected_candidate_cards(spec: SyntheticCase, rule_results: list[dict[str, Any]]) -> list[str]:
@@ -1458,6 +1629,22 @@ def teacher_note_prompt(prepared: PreparedCase, teacher_model_id: str, candidate
                 "workflow_instruction": (
                     "Prioritize specific next observations that improve escalation, monitoring, or handoff. "
                     "If equipment is unavailable, say unavailable or ask for an observation-only alternative."
+                ),
+            }
+        )
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        context.update(
+            {
+                "v5_training_focus": prepared.spec.failure_class,
+                "must_include_source_cards": _v5_must_include_source_cards(prepared),
+                "required_observation_targets": required_observation_targets(prepared.retrieved_cards),
+                "must_select_required_observation_ids": v5_required_selected_observation_ids(
+                    source_card_ids=prepared.expected_source_card_ids,
+                    retrieved_cards=prepared.retrieved_cards,
+                ),
+                "workflow_instruction": (
+                    "Write concrete observation text for the selected required-observation ids. "
+                    "Avoid generic phrases such as repeat vitals or monitor closely."
                 ),
             }
         )
@@ -1942,6 +2129,7 @@ def teacher_candidate_prompt(prepared: PreparedCase, teacher_model_id: str, cand
 
 
 def teacher_compact_context(prepared: PreparedCase, teacher_model_id: str) -> dict[str, Any]:
+    cue_buckets = bucket_expected_observation_cues(prepared.expected_missing_observations)
     context = {
         "case_id": prepared.spec.case_id,
         "dataset_version": prepared.spec.dataset_version,
@@ -1954,6 +2142,9 @@ def teacher_compact_context(prepared: PreparedCase, teacher_model_id: str) -> di
         "expected_source_card_ids": prepared.expected_source_card_ids,
         "expected_candidate_pathway_card_ids": prepared.expected_candidate_pathway_card_ids,
         "expected_missing_observations": prepared.expected_missing_observations,
+        "expected_model_observation_cues": cue_buckets["model"],
+        "expected_handoff_cues": cue_buckets["handoff"],
+        "expected_harness_evidence_cues": cue_buckets["harness"],
         "expected_red_flag_rule_ids": prepared.expected_red_flag_rule_ids,
         "expected_min_protocol_urgency": prepared.urgency_floor,
         "retrieved_card_ids": prepared.retrieved_ids,
@@ -1970,6 +2161,18 @@ def teacher_compact_context(prepared: PreparedCase, teacher_model_id: str) -> di
                     "field-useful, concise, source-card-grounded intake/escalation/handoff support"
                 ),
                 "low_resource_constraints": prepared.spec.structured_intake.get("available_supplies"),
+            }
+        )
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        context.update(
+            {
+                "v5_training_focus": prepared.spec.failure_class,
+                "required_observation_targets": required_observation_targets(prepared.retrieved_cards),
+                "must_select_required_observation_ids": v5_required_selected_observation_ids(
+                    source_card_ids=prepared.expected_source_card_ids,
+                    retrieved_cards=prepared.retrieved_cards,
+                ),
+                "must_include_source_cards": _v5_must_include_source_cards(prepared),
             }
         )
     return context
@@ -1996,6 +2199,7 @@ def score_candidate(candidate: dict[str, Any], prepared: PreparedCase) -> Candid
         retrieved_cards=prepared.retrieved_cards,
         rule_results=prepared.rule_results,
         urgency_floor=prepared.urgency_floor,
+        confirmed_intake=prepared.spec.structured_intake,
     )
     patched = patch_expected_labels(scaffold.output, prepared)
     validation = validate_navigator_output(
@@ -2050,9 +2254,17 @@ def patch_expected_labels(output: dict[str, Any], prepared: PreparedCase) -> dic
         patched["do_not_do"] = forbidden_behavior_for_version(prepared.spec.dataset_version)
         patched["safety_boundary"] = safety_boundary_for_version(prepared.spec.dataset_version)
 
+    fired_rule_card_ids = {
+        str(rule.get("card_id", "")).strip()
+        for rule in prepared.rule_results
+        if str(rule.get("card_id", "")).strip()
+    }
     source_cards = _string_list(patched.get("source_cards"))
     for card_id in prepared.expected_source_card_ids:
-        if card_id in prepared.retrieved_ids and card_id not in source_cards:
+        if (
+            card_id in prepared.retrieved_ids
+            or (uses_v5_focused_policy(prepared.spec.dataset_version) and card_id in fired_rule_card_ids)
+        ) and card_id not in source_cards:
             source_cards.append(card_id)
     patched["source_cards"] = source_cards[:6]
 
@@ -2086,6 +2298,13 @@ def patch_expected_labels(output: dict[str, Any], prepared: PreparedCase) -> dic
         next_observations = _dedupe(priority_cues + next_observations)[:8]
     patched["missing_info_to_collect"] = missing_info
     patched["next_observations_to_collect"] = next_observations
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        selected_ids = v5_required_selected_observation_ids(
+            source_card_ids=patched["source_cards"],
+            retrieved_cards=prepared.retrieved_cards,
+        )
+        if selected_ids:
+            patched[TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY] = selected_ids
     return patched
 
 
@@ -2116,7 +2335,20 @@ def reward_components_for(
                 expected_candidate_pathway_card_ids=prepared.expected_candidate_pathway_card_ids,
             )
         )
-    if uses_v3_field_workflow_policy(prepared.spec.dataset_version):
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        rewards["v5_policy_pass"] = int(
+            not v5_policy_issues(
+                output,
+                failure_class=prepared.spec.failure_class,
+                expected_red_flag_rule_ids=prepared.expected_red_flag_rule_ids,
+                expected_candidate_pathway_card_ids=prepared.expected_candidate_pathway_card_ids,
+                structured_intake=prepared.spec.structured_intake,
+                rule_results=prepared.rule_results,
+                retrieved_cards=prepared.retrieved_cards,
+                target_protocol_card_id=prepared.spec.target_protocol_card_id,
+            )
+        )
+    elif uses_v3_field_workflow_policy(prepared.spec.dataset_version):
         rewards["v3_policy_pass"] = int(
             not v3_policy_issues(
                 output,
@@ -2206,7 +2438,127 @@ def v3_policy_issues(
     return _dedupe(issues)
 
 
+def v5_required_selected_observation_ids(
+    *,
+    source_card_ids: list[str],
+    retrieved_cards: list[dict[str, Any]],
+) -> list[str]:
+    """Return required-observation ids a v5 label must select for cited retrieved clinical cards."""
+
+    source_set = {str(card_id).strip() for card_id in source_card_ids if str(card_id).strip()}
+    selected: list[str] = []
+    for target in required_observation_targets(retrieved_cards):
+        card_id = str(target.get("card_id", "")).strip()
+        target_id = str(target.get("id", "")).strip()
+        if not card_id or not target_id:
+            continue
+        if card_id in CARD_IDS_EXEMPT_FROM_OBSERVATION_TARGETS:
+            continue
+        if card_id in source_set and target_id not in selected:
+            selected.append(target_id)
+    return selected
+
+
+def _v5_must_include_source_cards(prepared: PreparedCase) -> list[str]:
+    required = list(prepared.expected_source_card_ids)
+    for rule in prepared.rule_results:
+        card_id = str(rule.get("card_id", "")).strip()
+        if card_id and card_id not in required:
+            required.append(card_id)
+    if prepared.spec.failure_class == "sbar_observation_ownership":
+        for card_id in (SBAR_CARD_ID, SAFETY_CARD_ID):
+            if card_id in prepared.retrieved_ids and card_id not in required:
+                required.append(card_id)
+    return required[:6]
+
+
+def v5_policy_issues(
+    output: dict[str, Any],
+    *,
+    failure_class: str,
+    expected_red_flag_rule_ids: list[str],
+    expected_candidate_pathway_card_ids: list[str],
+    structured_intake: dict[str, Any] | None = None,
+    rule_results: list[dict[str, Any]] | None = None,
+    retrieved_cards: list[dict[str, Any]] | None = None,
+    target_protocol_card_id: str = "",
+) -> list[str]:
+    """Return v5-focused dataset policy violations for accepted assistant labels."""
+
+    issues = v3_policy_issues(
+        output,
+        failure_class=failure_class,
+        expected_red_flag_rule_ids=expected_red_flag_rule_ids,
+        expected_candidate_pathway_card_ids=expected_candidate_pathway_card_ids,
+        structured_intake=structured_intake,
+    )
+    source_cards = _string_list(output.get("source_cards"))
+    source_card_set = set(source_cards)
+
+    for rule in rule_results or []:
+        card_id = str(rule.get("card_id", "")).strip()
+        if card_id and card_id not in source_card_set:
+            issues.append(f"fired_rule_source_card_missing:{card_id}")
+
+    selected_ids = _string_list(output.get(TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY))
+    required_selected_ids = v5_required_selected_observation_ids(
+        source_card_ids=source_cards,
+        retrieved_cards=retrieved_cards or [],
+    )
+    if required_selected_ids and not selected_ids:
+        issues.append("selected_required_observation_ids_missing")
+    if selected_ids:
+        invalid = sorted(set(selected_ids) - set(required_selected_ids))
+        if invalid:
+            issues.append(f"selected_required_observation_ids_invalid:{','.join(invalid)}")
+        selected_cards = {
+            selected_id.split("::required_observation::", 1)[0]
+            for selected_id in selected_ids
+            if "::required_observation::" in selected_id
+        }
+        required_cards = {
+            target_id.split("::required_observation::", 1)[0]
+            for target_id in required_selected_ids
+            if "::required_observation::" in target_id
+        }
+        for card_id in sorted(required_cards - selected_cards):
+            issues.append(f"selected_required_observation_ids_missing_for_card:{card_id}")
+
+    for item in _string_list(output.get("missing_info_to_collect")) + _string_list(
+        output.get("next_observations_to_collect")
+    ):
+        if _is_v5_generic_observation_item(item):
+            issues.append(f"generic_observation_phrase:{_safe_counter_key(item)}")
+
+    if (
+        target_protocol_card_id == SBAR_CARD_ID
+        or SBAR_CARD_ID in source_card_set
+        or failure_class in {"sbar_observation_ownership", *V3_SBAR_FAILURE_CLASSES}
+    ):
+        sbar = output.get("handoff_note_sbar") if isinstance(output.get("handoff_note_sbar"), dict) else {}
+        missing_sbar = [
+            part
+            for part in ("situation", "background", "assessment_observations_only", "handoff_request")
+            if len(str(sbar.get(part) or "").strip()) < 6
+        ]
+        if missing_sbar:
+            issues.append("handoff_sbar_missing_required_parts")
+
+    return _dedupe(issues)
+
+
 def _policy_issues_for_prepared(output: dict[str, Any], prepared: PreparedCase) -> list[str]:
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        return v5_policy_issues(
+            output,
+            failure_class=prepared.spec.failure_class,
+            expected_red_flag_rule_ids=prepared.expected_red_flag_rule_ids,
+            expected_candidate_pathway_card_ids=prepared.expected_candidate_pathway_card_ids,
+            structured_intake=prepared.spec.structured_intake,
+            rule_results=prepared.rule_results,
+            retrieved_cards=prepared.retrieved_cards,
+            target_protocol_card_id=prepared.spec.target_protocol_card_id,
+        )
     if uses_v3_field_workflow_policy(prepared.spec.dataset_version):
         return v3_policy_issues(
             output,
@@ -2232,6 +2584,13 @@ def _is_v3_generic_item(value: str) -> bool:
     return any(pattern.search(text) for pattern in V3_GENERIC_OUTPUT_PATTERNS)
 
 
+def _is_v5_generic_observation_item(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in V5_GENERIC_OBSERVATION_PATTERNS)
+
+
 def _resource_unavailable(resource_text: str, phrases: tuple[str, ...]) -> bool:
     return any(phrase in resource_text for phrase in phrases)
 
@@ -2255,19 +2614,34 @@ def eval_record_for_output(
     output: dict[str, Any],
     validation: dict[str, Any],
 ) -> dict[str, Any]:
+    cue_buckets = bucket_expected_observation_cues(prepared.expected_missing_observations)
+    harness_evidence = build_harness_evidence(
+        confirmed_intake=prepared.spec.structured_intake,
+        retrieved_card_ids=prepared.retrieved_ids,
+        rule_results=prepared.rule_results,
+        urgency_floor=prepared.urgency_floor,
+        validator_result=validation,
+        final_output=output,
+    )
     return {
         "case_id": prepared.spec.case_id,
+        "structured_intake": prepared.spec.structured_intake,
         "target_protocol_card_id": prepared.spec.target_protocol_card_id,
         "expected_min_protocol_urgency": prepared.urgency_floor,
         "expected_red_flag_rule_ids": prepared.expected_red_flag_rule_ids,
         "expected_source_card_ids": prepared.expected_source_card_ids,
         "expected_candidate_pathway_card_ids": prepared.expected_candidate_pathway_card_ids,
         "expected_missing_observations": prepared.expected_missing_observations,
+        "expected_model_observation_cues": cue_buckets["model"],
+        "expected_handoff_cues": cue_buckets["handoff"],
+        "expected_harness_evidence_cues": cue_buckets["harness"],
         "forbidden_behavior": forbidden_behavior_for_version(prepared.spec.dataset_version),
         "actual_red_flag_rule_ids": [str(rule["rule_id"]) for rule in prepared.rule_results],
         "actual_protocol_urgency": output.get("protocol_urgency"),
         "actual_source_card_ids": _string_list(output.get("source_cards")),
         "actual_candidate_pathway_card_ids": _candidate_ids(output.get("candidate_protocol_pathways")),
+        "retrieved_card_ids": prepared.retrieved_ids,
+        "harness_evidence": harness_evidence,
         "final_output": output,
         "final_validation": validation,
     }
@@ -2282,6 +2656,7 @@ def build_sft_row(
     candidate_passed: int,
 ) -> dict[str, Any]:
     workflow_category = str(prepared.spec.structured_intake.get("workflow_category") or "")
+    cue_buckets = bucket_expected_observation_cues(prepared.expected_missing_observations)
     metadata = {
         "teacher_model_id": teacher_model_id,
         "critic_model_id": teacher_model_id,
@@ -2295,6 +2670,9 @@ def build_sft_row(
             "source_cards": prepared.expected_source_card_ids,
             "candidate_pathway_card_ids": prepared.expected_candidate_pathway_card_ids,
             "required_observation_cues": prepared.expected_missing_observations,
+            "model_observation_cues": cue_buckets["model"],
+            "handoff_cues": cue_buckets["handoff"],
+            "harness_evidence_cues": cue_buckets["harness"],
             "red_flag_rule_ids": prepared.expected_red_flag_rule_ids,
             "min_protocol_urgency": prepared.urgency_floor,
         },
@@ -2338,6 +2716,20 @@ def build_sft_row(
                 },
             }
         )
+    if uses_v5_focused_policy(prepared.spec.dataset_version):
+        must_include_selected = v5_required_selected_observation_ids(
+            source_card_ids=_string_list(result.output.get("source_cards")),
+            retrieved_cards=prepared.retrieved_cards,
+        )
+        metadata.update(
+            {
+                "training_focus": prepared.spec.failure_class,
+                "v5_training_policy_version": 1,
+                "excluded_eval_case_ids": list(V5_EXCLUDED_EVAL_CASE_IDS),
+                "must_include_source_cards": _v5_must_include_source_cards(prepared),
+                "must_include_selected_required_observation_ids": must_include_selected,
+            }
+        )
     return {
         "case_id": prepared.spec.case_id,
         "uuid": prepared.spec.case_id,
@@ -2356,6 +2748,7 @@ def build_sft_row(
 
 
 def case_spec_record(prepared: PreparedCase) -> dict[str, Any]:
+    cue_buckets = bucket_expected_observation_cues(prepared.expected_missing_observations)
     record = {
         "case_id": prepared.spec.case_id,
         "dataset_version": prepared.spec.dataset_version,
@@ -2367,6 +2760,9 @@ def case_spec_record(prepared: PreparedCase) -> dict[str, Any]:
         "expected_source_card_ids": prepared.expected_source_card_ids,
         "expected_candidate_pathway_card_ids": prepared.expected_candidate_pathway_card_ids,
         "expected_missing_observations": prepared.expected_missing_observations,
+        "expected_model_observation_cues": cue_buckets["model"],
+        "expected_handoff_cues": cue_buckets["handoff"],
+        "expected_harness_evidence_cues": cue_buckets["harness"],
         "retrieved_card_ids": prepared.retrieved_ids,
         "tags": prepared.spec.tags,
     }

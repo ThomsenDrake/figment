@@ -1,0 +1,219 @@
+{
+  "active_model_id": "figment-sft-v3-lora-merged-bf16.gguf",
+  "canned_fallback_successes": 0,
+  "canned_fallback_uses": 0,
+  "case_paths": [
+    "data/eval/field_workflow_holdout_v1.jsonl"
+  ],
+  "competence_successes": 3,
+  "deterministic_patch_count": 0,
+  "expected_label_cases": 3,
+  "expected_label_check_failures": {
+    "expected_candidate_pathways_present": 0,
+    "expected_source_cards_present": 0,
+    "forbidden_behavior_absent": 0,
+    "handoff_cues_present": 0,
+    "handoff_readiness_passed": 0,
+    "harness_evidence_cues_visible": 0,
+    "min_urgency_met": 0,
+    "missing_observation_cues_present": 0,
+    "model_observation_cues_present": 0,
+    "red_flags_match": 0,
+    "target_card_in_candidate_pathways": 0,
+    "target_card_in_source_cards": 0
+  },
+  "expected_label_check_successes": {
+    "expected_candidate_pathways_present": 3,
+    "expected_source_cards_present": 3,
+    "forbidden_behavior_absent": 3,
+    "handoff_cues_present": 3,
+    "handoff_readiness_passed": 3,
+    "harness_evidence_cues_visible": 3,
+    "min_urgency_met": 3,
+    "missing_observation_cues_present": 3,
+    "model_observation_cues_present": 3,
+    "red_flags_match": 3,
+    "target_card_in_candidate_pathways": 3,
+    "target_card_in_source_cards": 3
+  },
+  "expected_label_failures": 0,
+  "expected_label_successes": 3,
+  "fallback_uses": 0,
+  "field_provenance_by_field": {
+    "candidate_protocol_pathways": {
+      "model_raw": 3
+    },
+    "conflicts_or_uncertainties": {
+      "model_raw": 3
+    },
+    "do_not_do": {
+      "model_raw": 3
+    },
+    "handoff_note_sbar": {
+      "model_raw": 3
+    },
+    "intake_facts": {
+      "model_raw": 3
+    },
+    "missing_info_to_collect": {
+      "model_raw": 3
+    },
+    "next_observations_to_collect": {
+      "model_raw": 3
+    },
+    "protocol_urgency": {
+      "model_raw": 3
+    },
+    "red_flags": {
+      "model_raw": 3
+    },
+    "responder_checklist": {
+      "model_raw": 3
+    },
+    "responder_plain_language_script": {
+      "model_raw": 3
+    },
+    "safety_boundary": {
+      "model_raw": 2,
+      "model_repaired": 1
+    },
+    "source_cards": {
+      "model_raw": 3
+    }
+  },
+  "field_provenance_counts": {
+    "model_raw": 38,
+    "model_repaired": 1
+  },
+  "field_provenance_fields": 39,
+  "final_validation_successes": 3,
+  "handoff_metric_failures": {
+    "handoff_brevity_ok": 0,
+    "handoff_readiness_passed": 0,
+    "sbar_assessment_observation_only": 0,
+    "sbar_background_present": 0,
+    "sbar_red_flags_visible": 0,
+    "sbar_request_present": 0,
+    "sbar_situation_present": 0,
+    "sbar_source_card_cited": 0
+  },
+  "handoff_metric_successes": {
+    "handoff_brevity_ok": 3,
+    "handoff_readiness_passed": 3,
+    "sbar_assessment_observation_only": 3,
+    "sbar_background_present": 3,
+    "sbar_red_flags_visible": 3,
+    "sbar_request_present": 3,
+    "sbar_situation_present": 3,
+    "sbar_source_card_cited": 3
+  },
+  "handoff_unsupported_fact_total": 0,
+  "local_llm_evidence": {
+    "competence_successes": 3,
+    "counts_as_50_case_local_llm_competence": false,
+    "counts_as_50_case_local_llm_eval": false,
+    "fallback_uses": 0,
+    "final_validation_successes": 3,
+    "gguf_path": "artifacts/modal_checkpoints/figment-sft-v3-lora-merged-bf16.gguf",
+    "gguf_sha256": "7ee6439f87d50af289136a345ee73e633e20035c79582f942f03f9331bb8a658",
+    "llama_base_url": "http://127.0.0.1:8001/v1",
+    "model_backend": "llama_cpp",
+    "model_id": "figment-sft-v3-lora-merged-bf16.gguf",
+    "model_stack": "local_4b_parakeet",
+    "models_endpoint": {
+      "available": true,
+      "payload": {
+        "data": [
+          {
+            "aliases": [],
+            "created": 1781101156,
+            "id": "figment-sft-v3-lora-merged-bf16.gguf",
+            "meta": {
+              "n_ctx": 16384,
+              "n_ctx_train": 1048576,
+              "n_embd": 3136,
+              "n_params": 3973556832,
+              "n_vocab": 131072,
+              "size": 7949760896,
+              "vocab_type": 2
+            },
+            "object": "model",
+            "owned_by": "llamacpp",
+            "tags": []
+          }
+        ],
+        "models": [
+          {
+            "capabilities": [
+              "completion"
+            ],
+            "description": "",
+            "details": {
+              "families": [
+                ""
+              ],
+              "family": "",
+              "format": "gguf",
+              "parameter_size": "",
+              "parent_model": "",
+              "quantization_level": ""
+            },
+            "digest": "",
+            "model": "figment-sft-v3-lora-merged-bf16.gguf",
+            "modified_at": "",
+            "name": "figment-sft-v3-lora-merged-bf16.gguf",
+            "parameters": "",
+            "size": "",
+            "tags": [
+              ""
+            ],
+            "type": "model"
+          }
+        ],
+        "object": "list"
+      },
+      "url": "http://127.0.0.1:8001/v1/models"
+    },
+    "n_ctx": 16384,
+    "n_parallel": 1,
+    "no_cloud_note": "MODEL_BACKEND=llama_cpp calls the configured local OpenAI-compatible LLAMA_BASE_URL. Record server /v1/models metadata and network isolation evidence beside the trace.",
+    "prompt_cache": null,
+    "proof_status": "eval_records_summarized",
+    "raw_configured_model_successes": 2,
+    "real_eval_command": "FIGMENT_MODE=local MODEL_STACK=local_4b_parakeet MODEL_BACKEND=llama_cpp LOCAL_MODEL_ID=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 LLAMA_BASE_URL=http://127.0.0.1:8001/v1 PYTHON_DOTENV_DISABLED=true python3 scripts/run_eval.py --backend llama_cpp --model-stack local_4b_parakeet --cases data/eval/initial_handwritten_cases.jsonl --cases data/eval/adversarial_strict_cases.jsonl --cases data/eval/comprehensive_hosted_cases.jsonl --output traces/local_llama_cpp_eval_$(date -u +%Y%m%dT%H%M%SZ).jsonl",
+    "repair_successes": 1,
+    "runtime_error_summary": {
+      "affected_case_ids": [],
+      "context_size_exceeded": false,
+      "critical_runtime_error_count": 0,
+      "kv_cache_failure": false,
+      "server_http_500": false
+    },
+    "scored_reporting_eligible": true,
+    "server_command": "llama-server --model artifacts/modal_checkpoints/figment-sft-v3-lora-merged-bf16.gguf --ctx-size 16384 --parallel 1 --host 127.0.0.1 --port 8001 --timeout 3600",
+    "total_cases": 3
+  },
+  "missing_handoff_cue_counts": {},
+  "missing_harness_evidence_cue_counts": {},
+  "missing_model_observation_cue_counts": {},
+  "model_backend": "llama_cpp",
+  "model_field_pass_rate": 1.0,
+  "model_retained_field_count": 39,
+  "model_stack": "local_4b_parakeet",
+  "model_visible_field_count": 39,
+  "model_visible_fields_retained": 1.0,
+  "output_path": "traces/v4_readiness_v3_current_smoke_20260610T141544Z/local_4b_eval.jsonl",
+  "raw_configured_model_successes": 2,
+  "records_with_field_provenance": 3,
+  "repair_successes": 1,
+  "runtime_error_summary": {
+    "affected_case_ids": [],
+    "context_size_exceeded": false,
+    "critical_runtime_error_count": 0,
+    "kv_cache_failure": false,
+    "server_http_500": false
+  },
+  "scored_reporting_eligible": true,
+  "total_cases": 3,
+  "visible_field_provenance_count": 39
+}

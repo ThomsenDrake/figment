@@ -182,6 +182,45 @@ def test_trace_and_navigator_ui_show_field_provenance_counts_for_hybrid_output()
     assert "Configured backend" in navigator_html
 
 
+def test_harness_evidence_is_visible_outside_model_authored_text() -> None:
+    app = importlib.import_module("app")
+    evidence = {
+        "confirmed_intake": True,
+        "retrieved_card_ids": ["CHEST-PAIN-ESCALATION-v1", "REFERRAL-SBAR-v1"],
+        "deterministic_rule_ids": ["CHEST-001"],
+        "urgency_floor": "emergency",
+        "validator_status": "passed",
+        "audio_correction_status": "not_applicable",
+        "source_card_ids": ["CHEST-PAIN-ESCALATION-v1"],
+        "final_route": "live_model_generated",
+    }
+    trace = {
+        "events": ["validation complete"],
+        "model_route": {"model_backend": "llama_cpp", "fallback_tier": "configured"},
+        "validator_result": {"passed": True, "failures": []},
+        "navigator_output": {"harness_evidence": evidence},
+        "raw_audio_stored": False,
+    }
+    output = {
+        "protocol_urgency": "emergency",
+        "missing_info_to_collect": ["repeat vitals"],
+        "responder_checklist": [],
+        "do_not_do": [],
+        "source_cards": ["CHEST-PAIN-ESCALATION-v1"],
+        "handoff_note_sbar": {},
+        "harness_evidence": evidence,
+    }
+
+    navigator_html = app._navigator_summary_html(output, trace)
+    trace_html = app._trace_audit_html(trace)
+
+    assert "Harness Evidence" in navigator_html
+    assert "Harness Evidence" in trace_html
+    assert "Retrieved cards: 2" in navigator_html
+    assert "Validation: passed" in navigator_html
+    assert "Harness evidence: visible" in trace_html
+
+
 def test_typed_transcript_audio_draft_is_not_labeled_as_real_omni_audio() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(

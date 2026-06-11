@@ -3,6 +3,8 @@ from figment.focused_repair import (
     build_focused_repair_prompt,
     build_focused_repair_prompts,
     classify_validation_failures,
+    mandatory_source_card_ids_for_scope,
+    missing_mandatory_source_cards,
 )
 
 
@@ -112,6 +114,68 @@ def test_build_focused_repair_prompt_limits_model_to_selected_fields() -> None:
     assert "CHEST-PAIN-ESCALATION-v1" in prompt
     assert "CHEST-PAIN-ESCALATION-v1::required_observation::1" in prompt
     assert "chest pain description" in prompt
+
+
+def test_citation_repair_prompt_names_mandatory_source_cards() -> None:
+    scope = classify_validation_failures(
+        [
+            "fired rule card STROKE-SIGNS-v1 is not cited in source_cards",
+            "candidate pathway STROKE-SIGNS-v1 is not cited in source_cards",
+        ]
+    )[0]
+
+    prompt = build_focused_repair_prompt(
+        original_prompt="BASE NAVIGATOR PROMPT",
+        previous_output={
+            "source_cards": ["SAFETY-BOUNDARIES-v1"],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "SAFETY-BOUNDARIES-v1",
+                    "reason_relevant": "Existing pathway.",
+                }
+            ],
+        },
+        repair_scope=scope,
+        urgency_floor="emergency",
+    )
+
+    assert scope.name == "citations_and_pathways"
+    assert scope.fields == ("source_cards", "candidate_protocol_pathways")
+    assert mandatory_source_card_ids_for_scope(scope) == ("STROKE-SIGNS-v1",)
+    assert "Mandatory source cards: STROKE-SIGNS-v1" in prompt
+    assert "Do not remove any mandatory source card" in prompt
+    assert "exactly these top-level keys: source_cards, candidate_protocol_pathways" in prompt
+
+
+def test_citation_repair_rejects_output_that_omits_mandatory_source_card() -> None:
+    scope = classify_validation_failures(
+        ["fired rule card PREG-DANGER-SIGNS-v1 is not cited in source_cards"]
+    )[0]
+
+    assert missing_mandatory_source_cards(
+        scope,
+        {
+            "source_cards": ["REFERRAL-SBAR-v1", "SAFETY-BOUNDARIES-v1"],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "REFERRAL-SBAR-v1",
+                    "reason_relevant": "SBAR handoff.",
+                }
+            ],
+        },
+    ) == ("PREG-DANGER-SIGNS-v1",)
+    assert missing_mandatory_source_cards(
+        scope,
+        {
+            "source_cards": ["PREG-DANGER-SIGNS-v1", "REFERRAL-SBAR-v1"],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "PREG-DANGER-SIGNS-v1",
+                    "reason_relevant": "Pregnancy danger sign fired deterministically.",
+                }
+            ],
+        },
+    ) == ()
 
 
 def test_forbidden_language_prompt_keeps_safety_boundaries_explicit() -> None:

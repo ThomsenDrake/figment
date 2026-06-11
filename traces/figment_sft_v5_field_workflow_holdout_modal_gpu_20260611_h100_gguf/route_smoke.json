@@ -1,0 +1,45 @@
+{
+  "bounded_field_source": "configured_model",
+  "bounded_fields_present": {
+    "candidate_protocol_pathways": true,
+    "conflicts_or_uncertainties": true,
+    "handoff_note_sbar": true,
+    "missing_info_to_collect": true,
+    "next_observations_to_collect": true,
+    "responder_checklist": true
+  },
+  "fallback_reason": null,
+  "fallback_tier": "configured",
+  "latency_ms": 4021.4,
+  "local_llm_evidence": {
+    "configured_base_url": "http://127.0.0.1:8001/v1",
+    "configured_model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "counts_as_50_case_local_llm_competence": false,
+    "counts_as_no_cloud_route_proof": true,
+    "evidence_scope": "one_case_route_smoke",
+    "fallback_tier": "configured",
+    "network_attempted": true,
+    "proof_status": "one_case_route_smoke_passed",
+    "real_eval_command": "FIGMENT_MODE=local MODEL_STACK=local_4b_parakeet MODEL_BACKEND=llama_cpp LOCAL_MODEL_ID=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 LLAMA_BASE_URL=http://127.0.0.1:8001/v1 PYTHON_DOTENV_DISABLED=true python3 scripts/run_eval.py --backend llama_cpp --model-stack local_4b_parakeet --cases data/eval/initial_handwritten_cases.jsonl --cases data/eval/adversarial_strict_cases.jsonl --cases data/eval/comprehensive_hosted_cases.jsonl --output traces/local_llama_cpp_eval_$(date -u +%Y%m%dT%H%M%SZ).jsonl",
+    "validation_passed": true
+  },
+  "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+  "network_attempted": true,
+  "network_enabled": true,
+  "off_grid_note": "A no-cloud/off-grid proof depends on the recorded route being self-hosted with no runtime cloud APIs. This can be the smaller local stack or self-hosted Omni on adequate local hardware; the smoke output records the configured model_id and route instead of assuming only 4B can qualify.",
+  "route": {
+    "base_url": "http://127.0.0.1:8001/v1",
+    "fallback_reason": null,
+    "fallback_tier": "configured",
+    "model_backend": "llama_cpp",
+    "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "model_stack": "local_4b_parakeet",
+    "route_kind": "local_openai_compatible"
+  },
+  "status": "passed",
+  "trace_path": null,
+  "validation": {
+    "failures": [],
+    "passed": true
+  }
+}

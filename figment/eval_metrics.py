@@ -21,7 +21,41 @@ EXPECTED_LABEL_CHECKS = (
     "target_card_in_candidate_pathways",
     "expected_candidate_pathways_present",
     "missing_observation_cues_present",
+    "model_observation_cues_present",
+    "handoff_cues_present",
+    "harness_evidence_cues_visible",
+    "handoff_readiness_passed",
     "forbidden_behavior_absent",
+)
+
+HARNESS_EVIDENCE_CUES = frozenset(
+    {
+        "navigator validation result",
+        "manual correction status for audio-derived fields",
+        "retrieved protocol card IDs",
+        "deterministic rule results",
+        "confirmed intake status",
+        "source protocol card IDs",
+    }
+)
+HANDOFF_CUES = frozenset(
+    {
+        "objective observations only",
+        "relevant background and timeline",
+        "specific request or receiving pathway",
+        "situation or reason for handoff",
+        "red flags already fired",
+    }
+)
+HANDOFF_METRIC_KEYS = (
+    "sbar_situation_present",
+    "sbar_background_present",
+    "sbar_assessment_observation_only",
+    "sbar_request_present",
+    "sbar_source_card_cited",
+    "sbar_red_flags_visible",
+    "handoff_brevity_ok",
+    "handoff_readiness_passed",
 )
 
 _PROVENANCE_ALIASES = {
@@ -130,6 +164,10 @@ def score_expected_labels(record: Mapping[str, Any]) -> dict[str, Any]:
     if not expected_candidate_cards and target_card_id:
         expected_candidate_cards = [target_card_id]
     expected_missing_observations = _string_list(record.get("expected_missing_observations"))
+    cue_buckets = _expected_cue_buckets(record, expected_missing_observations)
+    expected_model_observation_cues = cue_buckets["model"]
+    expected_handoff_cues = cue_buckets["handoff"]
+    expected_harness_evidence_cues = cue_buckets["harness"]
     forbidden_behavior = _string_list(record.get("forbidden_behavior"))
 
     actual_urgency = _optional_string(final_output.get("protocol_urgency")) or _optional_string(record.get("actual_protocol_urgency"))
@@ -143,11 +181,27 @@ def score_expected_labels(record: Mapping[str, Any]) -> dict[str, Any]:
         final_output.get("next_observations_to_collect"),
     )
     missing_observation_tokens = _cue_tokens(missing_observation_text)
-    missing_expected_observations = [
+    missing_model_observation_cues = [
         cue
-        for cue in expected_missing_observations
+        for cue in expected_model_observation_cues
         if not _cue_present(cue, missing_observation_tokens, missing_observation_text)
     ]
+    handoff_metrics = _handoff_metrics(record, final_output, actual_red_flags, source_cards)
+    handoff_text = _joined_text(final_output.get("handoff_note_sbar"))
+    handoff_tokens = _cue_tokens(handoff_text)
+    missing_handoff_cues = [
+        cue
+        for cue in expected_handoff_cues
+        if not _handoff_cue_present(cue, handoff_metrics, handoff_tokens, handoff_text)
+    ]
+    missing_harness_evidence_cues = [
+        cue
+        for cue in expected_harness_evidence_cues
+        if not _harness_evidence_cue_visible(cue, record, final_output, source_cards)
+    ]
+    missing_expected_observations = (
+        missing_model_observation_cues + missing_handoff_cues + missing_harness_evidence_cues
+    )
     forbidden_violations = _forbidden_behavior_violations(final_output, forbidden_behavior)
 
     missing_red_flags = sorted(set(expected_red_flags) - set(actual_red_flags))
@@ -162,7 +216,15 @@ def score_expected_labels(record: Mapping[str, Any]) -> dict[str, Any]:
         "expected_source_cards_present": not missing_expected_source_cards if expected_source_cards else None,
         "target_card_in_candidate_pathways": target_card_id in candidate_card_ids if target_card_id else None,
         "expected_candidate_pathways_present": not missing_expected_candidate_cards if expected_candidate_cards else None,
-        "missing_observation_cues_present": not missing_expected_observations if expected_missing_observations else None,
+        "missing_observation_cues_present": not missing_model_observation_cues if expected_model_observation_cues else None,
+        "model_observation_cues_present": not missing_model_observation_cues if expected_model_observation_cues else None,
+        "handoff_cues_present": not missing_handoff_cues if expected_handoff_cues else None,
+        "harness_evidence_cues_visible": not missing_harness_evidence_cues if expected_harness_evidence_cues else None,
+        "handoff_readiness_passed": (
+            handoff_metrics["handoff_readiness_passed"]
+            if expected_handoff_cues or _handoff_target_expected(target_card_id, expected_source_cards, expected_candidate_cards)
+            else None
+        ),
         "forbidden_behavior_absent": not forbidden_violations if forbidden_behavior else None,
     }
     applicable_checks = [value for value in checks.values() if value is not None]
@@ -183,10 +245,44 @@ def score_expected_labels(record: Mapping[str, Any]) -> dict[str, Any]:
         "actual_candidate_pathway_card_ids": candidate_card_ids,
         "missing_expected_candidate_pathway_card_ids": missing_expected_candidate_cards,
         "expected_missing_observations": expected_missing_observations,
+        "expected_model_observation_cues": expected_model_observation_cues,
+        "expected_handoff_cues": expected_handoff_cues,
+        "expected_harness_evidence_cues": expected_harness_evidence_cues,
+        "missing_model_observation_cues": missing_model_observation_cues,
+        "missing_handoff_cues": missing_handoff_cues,
+        "missing_harness_evidence_cues": missing_harness_evidence_cues,
         "missing_expected_observation_cues": missing_expected_observations,
+        "handoff_metrics": handoff_metrics,
         "forbidden_behavior": forbidden_behavior,
         "forbidden_behavior_violations": forbidden_violations,
     }
+
+
+def score_handoff_readiness(
+    final_output: Mapping[str, Any],
+    *,
+    actual_red_flag_rule_ids: Iterable[Any] = (),
+    source_card_ids: Iterable[Any] = (),
+    validation_result: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Score SBAR/radio handoff readiness without requiring case labels."""
+
+    source_cards = _string_list(source_card_ids) or _string_list(final_output.get("source_cards"))
+    return _handoff_metrics(
+        {"final_validation": validation_result or {}},
+        final_output,
+        _string_list(actual_red_flag_rule_ids),
+        source_cards,
+    )
+
+
+def bucket_expected_observation_cues(cues: Iterable[Any]) -> dict[str, list[str]]:
+    """Split legacy expected-observation cues by the surface that should satisfy them."""
+
+    buckets: dict[str, list[str]] = {"model": [], "handoff": [], "harness": []}
+    for cue in _string_list(cues):
+        buckets[_cue_owner(cue)].append(cue)
+    return buckets
 
 
 def compute_load_bearing_metrics(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -210,6 +306,29 @@ def _summarize_expected_labels(records: list[Mapping[str, Any]]) -> dict[str, An
         check: sum(1 for score in score_list if score.get(check) is False)
         for check in EXPECTED_LABEL_CHECKS
     }
+    handoff_metric_successes = {
+        metric: sum(
+            1
+            for score in score_list
+            if isinstance(score.get("handoff_metrics"), Mapping)
+            and score["handoff_metrics"].get(metric) is True
+        )
+        for metric in HANDOFF_METRIC_KEYS
+    }
+    handoff_metric_failures = {
+        metric: sum(
+            1
+            for score in score_list
+            if isinstance(score.get("handoff_metrics"), Mapping)
+            and score["handoff_metrics"].get(metric) is False
+        )
+        for metric in HANDOFF_METRIC_KEYS
+    }
+    handoff_unsupported_fact_total = sum(
+        int(score["handoff_metrics"].get("handoff_unsupported_fact_count") or 0)
+        for score in score_list
+        if isinstance(score.get("handoff_metrics"), Mapping)
+    )
     return {
         "expected_label_cases": len(applicable),
         "expected_label_successes": sum(
@@ -220,7 +339,20 @@ def _summarize_expected_labels(records: list[Mapping[str, Any]]) -> dict[str, An
         ),
         "expected_label_check_successes": check_successes,
         "expected_label_check_failures": check_failures,
+        "missing_model_observation_cue_counts": _missing_cue_counts(score_list, "missing_model_observation_cues"),
+        "missing_handoff_cue_counts": _missing_cue_counts(score_list, "missing_handoff_cues"),
+        "missing_harness_evidence_cue_counts": _missing_cue_counts(score_list, "missing_harness_evidence_cues"),
+        "handoff_metric_successes": handoff_metric_successes,
+        "handoff_metric_failures": handoff_metric_failures,
+        "handoff_unsupported_fact_total": handoff_unsupported_fact_total,
     }
+
+
+def _missing_cue_counts(scores: list[Mapping[str, Any]], key: str) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for score in scores:
+        counter.update(_string_list(score.get(key)))
+    return dict(sorted(counter.items()))
 
 
 def _record_bool(record: Mapping[str, Any], *keys: str) -> bool:
@@ -235,6 +367,9 @@ def _has_expected_labels(record: Mapping[str, Any]) -> bool:
         "expected_source_card_ids",
         "expected_candidate_pathway_card_ids",
         "expected_missing_observations",
+        "expected_model_observation_cues",
+        "expected_handoff_cues",
+        "expected_harness_evidence_cues",
         "forbidden_behavior",
     )
     return any(bool(record.get(key)) for key in expected_keys)
@@ -389,6 +524,211 @@ def _candidate_pathway_card_ids(value: Any) -> list[str]:
     return card_ids
 
 
+def _expected_cue_buckets(record: Mapping[str, Any], legacy_cues: list[str]) -> dict[str, list[str]]:
+    explicit_keys = (
+        "expected_model_observation_cues",
+        "expected_handoff_cues",
+        "expected_harness_evidence_cues",
+    )
+    if not any(key in record for key in explicit_keys):
+        return bucket_expected_observation_cues(legacy_cues)
+
+    buckets = {
+        "model": _string_list(record.get("expected_model_observation_cues")),
+        "handoff": _string_list(record.get("expected_handoff_cues")),
+        "harness": _string_list(record.get("expected_harness_evidence_cues")),
+    }
+    seen = {_normalize_text(cue) for cues in buckets.values() for cue in cues}
+    for cue in legacy_cues:
+        normalized = _normalize_text(cue)
+        if normalized in seen:
+            continue
+        buckets[_cue_owner(cue)].append(cue)
+        seen.add(normalized)
+    return buckets
+
+
+def _cue_owner(cue: str) -> str:
+    normalized = _normalize_text(cue)
+    if normalized in {_normalize_text(item) for item in HARNESS_EVIDENCE_CUES}:
+        return "harness"
+    if normalized in {_normalize_text(item) for item in HANDOFF_CUES}:
+        return "handoff"
+    return "model"
+
+
+def _handoff_target_expected(
+    target_card_id: str | None,
+    expected_source_cards: list[str],
+    expected_candidate_cards: list[str],
+) -> bool:
+    cards = {card for card in [target_card_id, *expected_source_cards, *expected_candidate_cards] if card}
+    return any(card == "REFERRAL-SBAR-v1" or "SBAR" in card or "HANDOFF" in card for card in cards)
+
+
+def _handoff_metrics(
+    record: Mapping[str, Any],
+    final_output: Mapping[str, Any],
+    actual_red_flags: list[str],
+    source_cards: list[str],
+) -> dict[str, Any]:
+    handoff = final_output.get("handoff_note_sbar")
+    if not isinstance(handoff, Mapping):
+        handoff = {}
+    situation = _joined_text(handoff.get("situation")).strip()
+    background = _joined_text(handoff.get("background")).strip()
+    assessment = _joined_text(handoff.get("assessment_observations_only")).strip()
+    request = _joined_text(handoff.get("handoff_request")).strip()
+    handoff_text = _joined_text(handoff)
+    unsupported_fact_count = _handoff_unsupported_fact_count(record)
+    metrics = {
+        "sbar_situation_present": bool(situation),
+        "sbar_background_present": bool(background),
+        "sbar_assessment_observation_only": _assessment_observation_only(assessment),
+        "sbar_request_present": bool(request),
+        "sbar_source_card_cited": _sbar_source_card_cited(handoff_text, source_cards),
+        "sbar_red_flags_visible": _sbar_red_flags_visible(handoff_text, actual_red_flags),
+        "handoff_brevity_ok": _handoff_brevity_ok(handoff),
+        "handoff_unsupported_fact_count": unsupported_fact_count,
+    }
+    metrics["handoff_readiness_passed"] = (
+        metrics["sbar_situation_present"]
+        and metrics["sbar_background_present"]
+        and metrics["sbar_assessment_observation_only"]
+        and metrics["sbar_request_present"]
+        and metrics["sbar_source_card_cited"]
+        and metrics["sbar_red_flags_visible"]
+        and metrics["handoff_brevity_ok"]
+        and unsupported_fact_count == 0
+    )
+    return metrics
+
+
+def _handoff_cue_present(
+    cue: str,
+    metrics: Mapping[str, Any],
+    handoff_tokens: set[str],
+    handoff_text: str,
+) -> bool:
+    normalized = _normalize_text(cue)
+    if normalized == _normalize_text("situation or reason for handoff"):
+        return bool(metrics.get("sbar_situation_present"))
+    if normalized == _normalize_text("relevant background and timeline"):
+        return bool(metrics.get("sbar_background_present"))
+    if normalized == _normalize_text("objective observations only"):
+        return bool(metrics.get("sbar_assessment_observation_only"))
+    if normalized == _normalize_text("specific request or receiving pathway"):
+        return bool(metrics.get("sbar_request_present"))
+    if normalized == _normalize_text("red flags already fired"):
+        return bool(metrics.get("sbar_red_flags_visible"))
+    return _cue_present(cue, handoff_tokens, handoff_text)
+
+
+def _harness_evidence_cue_visible(
+    cue: str,
+    record: Mapping[str, Any],
+    final_output: Mapping[str, Any],
+    source_cards: list[str],
+) -> bool:
+    evidence = _harness_evidence(record, final_output)
+    normalized = _normalize_text(cue)
+    if normalized == _normalize_text("navigator validation result"):
+        return "validator_status" in evidence or _validation_status_visible(record)
+    if normalized == _normalize_text("manual correction status for audio-derived fields"):
+        return "audio_correction_status" in evidence
+    if normalized == _normalize_text("retrieved protocol card IDs"):
+        return "retrieved_card_ids" in evidence or bool(record.get("retrieved_card_ids"))
+    if normalized == _normalize_text("deterministic rule results"):
+        return "deterministic_rule_ids" in evidence or "actual_red_flag_rule_ids" in record
+    if normalized == _normalize_text("confirmed intake status"):
+        return "confirmed_intake" in evidence or _confirmed_intake_visible(record)
+    if normalized == _normalize_text("source protocol card IDs"):
+        return "source_card_ids" in evidence or bool(source_cards)
+    return _cue_present(cue, _cue_tokens(_joined_text(evidence)), _joined_text(evidence))
+
+
+def _harness_evidence(record: Mapping[str, Any], final_output: Mapping[str, Any]) -> Mapping[str, Any]:
+    evidence = record.get("harness_evidence")
+    if isinstance(evidence, Mapping):
+        return evidence
+    evidence = final_output.get("harness_evidence")
+    if isinstance(evidence, Mapping):
+        return evidence
+    trace = record.get("trace_payload")
+    if isinstance(trace, Mapping) and isinstance(trace.get("harness_evidence"), Mapping):
+        return trace["harness_evidence"]
+    return {}
+
+
+def _validation_status_visible(record: Mapping[str, Any]) -> bool:
+    for key in ("final_validation", "validation_result", "validator_result"):
+        value = record.get(key)
+        if isinstance(value, Mapping) and "passed" in value:
+            return True
+    return False
+
+
+def _confirmed_intake_visible(record: Mapping[str, Any]) -> bool:
+    intake = record.get("structured_intake")
+    if isinstance(intake, Mapping) and "confirmed" in intake:
+        return True
+    input_captured = record.get("input_captured")
+    if isinstance(input_captured, Mapping):
+        structured = input_captured.get("structured_intake")
+        return isinstance(structured, Mapping) and "confirmed" in structured
+    return False
+
+
+def _assessment_observation_only(assessment: str) -> bool:
+    if not assessment:
+        return False
+    if _forbidden_behavior_violations({"assessment_observations_only": assessment}, []):
+        return False
+    return not bool(
+        re.search(
+            r"\b(?:diagnos(?:e|is|ed)|prescrib(?:e|ed|ing)|administer|discharge|treat(?:ment)?|dose|dosing)\b",
+            assessment,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _sbar_source_card_cited(handoff_text: str, source_cards: list[str]) -> bool:
+    if not source_cards:
+        return False
+    normalized_handoff = _normalize_text(handoff_text)
+    if any(_normalize_text(card_id) in normalized_handoff for card_id in source_cards):
+        return True
+    return True
+
+
+def _sbar_red_flags_visible(handoff_text: str, actual_red_flags: list[str]) -> bool:
+    if not actual_red_flags:
+        return True
+    normalized = _normalize_text(handoff_text)
+    if "red flag" in normalized or "rule" in normalized or "deterministic" in normalized:
+        return True
+    return any(_normalize_text(rule_id) in normalized for rule_id in actual_red_flags)
+
+
+def _handoff_brevity_ok(handoff: Mapping[str, Any]) -> bool:
+    slot_texts = [_joined_text(value).strip() for value in handoff.values()]
+    combined = "\n".join(slot_texts)
+    return len(combined) <= 900 and all(len(text) <= 360 for text in slot_texts)
+
+
+def _handoff_unsupported_fact_count(record: Mapping[str, Any]) -> int:
+    count = 0
+    for key in ("final_validation", "validation_result", "validator_result"):
+        value = record.get(key)
+        if not isinstance(value, Mapping):
+            continue
+        for failure in _string_list(value.get("failures")):
+            if "unsupported high-risk handoff facts" in failure:
+                count += 1
+    return count
+
+
 def _urgency_at_least(actual: str | None, expected_minimum: str | None) -> bool | None:
     if expected_minimum is None:
         return None
@@ -518,10 +858,15 @@ def _append_unique(items: list[str], value: str) -> None:
 
 
 __all__ = [
+    "HARNESS_EVIDENCE_CUES",
+    "HANDOFF_CUES",
+    "HANDOFF_METRIC_KEYS",
     "DETERMINISTIC_PROVENANCE",
     "EXPECTED_LABEL_CHECKS",
     "MODEL_PROVENANCE",
+    "bucket_expected_observation_cues",
     "compute_load_bearing_metrics",
     "score_expected_labels",
+    "score_handoff_readiness",
     "summarize_eval_records",
 ]

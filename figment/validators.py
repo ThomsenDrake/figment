@@ -155,7 +155,13 @@ def validate_navigator_output(
     retrieved_cards_by_id = _retrieved_cards_by_id(retrieved_cards or [])
     if retrieved_card_ids is None and retrieved_cards_by_id:
         retrieved_card_ids = set(retrieved_cards_by_id)
+    fired_rule_card_ids = {
+        str(rule.get("card_id", "")).strip()
+        for rule in rule_results or []
+        if str(rule.get("card_id", "")).strip()
+    }
     allowed_cards = set(retrieved_card_ids) if retrieved_card_ids is not None else known_cards
+    allowed_cards.update(fired_rule_card_ids & known_cards)
     source_cards = output.get("source_cards")
     if not isinstance(source_cards, list) or not source_cards:
         result.add("source_cards must be a non-empty list")

@@ -68,6 +68,56 @@ Do not start the v4 training job until these are complete:
 
 This prevents v4 from learning to recite deterministic metadata instead of improving handoff usefulness.
 
+Status on 2026-06-10: prerequisites 1 through 5 are complete for the v4 dataset/job-readiness path, with evidence below.
+
+## Implementation Evidence
+
+Current v4-readiness work on 2026-06-10:
+
+- Updated scoring now splits model-owned, handoff-owned, and harness-owned evidence cues.
+- Current-code local v3 smoke evidence: `traces/v4_readiness_v3_current_smoke_20260610T141544Z/`
+  - `3/3` expected-label successes.
+  - `3/3` handoff-readiness successes.
+  - No fallback use and no context/KV/HTTP-500 runtime errors.
+- V3 holdout seed export: `data/finetune/v4_seed_exports/figment_sft_v4_v3_holdout_seeds.jsonl`
+  - `8` model/handoff/source failure seeds.
+  - `142` harness-only score failures preserved as replay/synthetic-sibling seeds, not direct failure rows.
+  - Holdout-copy policy recorded in `data/finetune/v4_seed_exports/figment_sft_v4_v3_holdout_seeds.manifest.json`.
+- V4 corpus wrapper: `scripts/generate_v4_full_corpus.py`
+  - Defaults: `1500` navigator rows plus `150` focused repair rows.
+  - Dataset/output paths default to `figment_sft_v4`.
+  - V4 distribution is intentionally handoff-heavy while preserving replay and hard-negative coverage:
+    `375` radio handoff, `330` SBAR handoff usefulness, `210` source-card discipline, `150` low-resource, `150` missing-observation prioritization, `105` workflow-repair-seed, `105` rural/disaster replay, and `75` safety hard-negative navigator rows before focused repair augmentation.
+- Teacher-backed v4 smoke corpus: `data/finetune/figment_sft_v4_smoke.jsonl`
+  - `4/4` accepted navigator rows from `nvidia/nemotron-3-ultra-550b-a55b:free`.
+  - `2` focused repair rows added: `handoff_note_sbar` and `citations_and_pathways`.
+  - Harness verification passed with `0` issues.
+  - Modal smoke split prepared at `data/finetune/modal/figment_sft_v4_smoke/`.
+- Full teacher-backed v4 corpus: `data/finetune/figment_sft_v4.jsonl`
+  - `1500` navigator rows plus `150` focused repair rows, `1650` total.
+  - `1500` case specs at `data/finetune/figment_sft_v4_case_specs.jsonl`.
+  - Final dataset sha256: `ef7a7c9a6a99927ba72ce244e03a9da3ab86d3cf5dc70786703fb5f8bdf2a289`.
+  - Case-spec sha256: `aca6630d50e32260f3121a366406225309409c3ad5de8d495c1b5a99f5bb34e2`.
+  - Standalone harness verification passed with `0` issues:
+    `.venv/bin/python scripts/verify_finetune_harness_alignment.py --dataset data/finetune/figment_sft_v4.jsonl --case-specs data/finetune/figment_sft_v4_case_specs.jsonl`.
+  - Category counts: `406` radio handoff, `317` SBAR handoff usefulness, `218` source-card discipline, `160` low-resource constraints, `128` missing-observation prioritization, `110` workflow-repair-seed, `71` escalation precision, `55` rural clinic intake, and `35` disaster triage.
+  - Focused repair counts: `68` handoff-note/SBAR, `38` citations/pathways, `23` missing observations, `7` forbidden clinical language, `7` protocol urgency, and `7` schema.
+  - Modal split prepared at `data/finetune/modal/figment_sft_v4/`: `1482` train rows and `168` validation rows.
+  - Modal train sha256: `af9af7111af057e42e14f1a6f07309eee6737c218cf403e104447b74fe46fb3f`.
+  - Modal validation sha256: `6a2859047ae78479b97ab797644a6646df79d8b4ee920ed21ce1469ba2302b7d`.
+  - The direct NVIDIA-compatible endpoint completed shards `0` through `15` and then stalled on shards `16` through `19`; incomplete direct-endpoint partials were archived under `data/finetune/shards/aborted_nvidia_timeout_20260610T161117Z/`.
+  - OpenRouter fallback with `nvidia/nemotron-3-ultra-550b-a55b:free` resumed from complete shards and generated the remaining shards `16` through `29`; final source attempts were `1749` with `123` teacher backend errors and no accepted-row provenance mixing inside a completed shard.
+  - Focused regression suite passed after generation: `.venv/bin/python -m pytest tests/test_prompt_builder_contract.py tests/test_focused_repair.py tests/test_navigator_safety.py tests/test_eval_runner.py tests/test_eval_metrics.py tests/test_finetune_v2_data_plan.py tests/test_runtime_honesty.py tests/test_modal_finetune_prep.py tests/test_v4_training_seed_export.py -q` -> `82 passed`.
+- Modal v4 smoke job passed:
+  - Command: `.venv/bin/modal run modal/finetune_figment_nemotron.py --dataset-version figment_sft_v4 --dataset data/finetune/figment_sft_v4.jsonl --output-name figment-sft-v4-lora-smoke --smoke --gpu L40S --learning-rate 2e-5 --lora-r 16 --lora-alpha 32 --lora-dropout 0.05 --gradient-accumulation-steps 8 --validation-steps 2 --save-steps 5`.
+  - Modal app: `ap-J7w1D5j8VwZ1S9CuF4mwzN`.
+  - Staged rows: `1482` train, `168` validation.
+  - Tokenized rows: `1482` train, `168` validation.
+  - Adapter path: `/checkpoints/figment_sft_v4/figment-sft-v4-lora-smoke`.
+  - Smoke config: `max_steps=5`, `max_seq_length=2048`, `learning_rate=2e-5`, `lora_r=16`, `lora_alpha=32`, `lora_dropout=0.05`, `gradient_accumulation_steps=8`.
+  - Metrics: `train_loss=14.122270011901856`, `train_runtime=148.2881`, `epoch=0.02699055330634278`; eval loss was `1.741158127784729` at step 2 and `1.7384405136108398` at step 4.
+  - Verified Modal volume artifacts include `adapter_model.safetensors`, `adapter_config.json`, tokenizer files, `chat_template.jinja`, `figment_training_manifest.json`, and `checkpoint-5/`.
+
 ## Training Strategy
 
 Use a targeted continuation from v3 as the primary run.
@@ -228,7 +278,11 @@ Patch `modal/finetune_figment_nemotron.py` before v4 if needed:
 - expose `save_steps`,
 - optionally support `resume_adapter_name` or `adapter_init_path`.
 
-The current entrypoint accepts `max_steps`, `max_seq_length`, `gpu`, `dataset_version`, `dataset`, and `output_name`, but the lower learning rate and rank controls are hard-coded through `build_train_config`.
+Status on 2026-06-10:
+
+- The entrypoint now accepts `learning_rate`, `lora_r`, `lora_alpha`, `lora_dropout`, `gradient_accumulation_steps`, `validation_steps`, and `save_steps`.
+- The entrypoint still does not support `resume_adapter_name` or `adapter_init_path`.
+- The ready full-run path is therefore fresh from `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` with replay-heavy v4 data, not continuation from the v3 adapter.
 
 Recommended SFT config:
 
@@ -239,7 +293,7 @@ Recommended SFT config:
 - `learning_rate`: `2e-5` for continuation from v3, `5e-5` if training fresh from base with replay
 - `gradient_accumulation_steps`: `8`
 - `validation_fraction`: `0.10`
-- `max_steps`: choose from staged row count and tokenized row count, not a fixed old pilot value
+- `max_steps`: `372` for the current fresh-from-base v4 run, approximately `2.0` epochs over `1482` train rows at batch size `1` and gradient accumulation `8`
 
 ## Runbook
 
@@ -274,7 +328,14 @@ Recommended SFT config:
   --dataset-version figment_sft_v4 \
   --dataset data/finetune/figment_sft_v4.jsonl \
   --output-name figment-sft-v4-lora \
-  --max-steps <computed_steps> \
+  --max-steps 372 \
+  --learning-rate 5e-5 \
+  --lora-r 16 \
+  --lora-alpha 32 \
+  --lora-dropout 0.05 \
+  --gradient-accumulation-steps 8 \
+  --validation-steps 25 \
+  --save-steps 50 \
   --gpu L40S \
   --spawn-train
 ```

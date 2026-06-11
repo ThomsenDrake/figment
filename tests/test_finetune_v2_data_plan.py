@@ -133,6 +133,22 @@ def test_v3_failure_distribution_matches_field_workflow_plan():
     assert categories.count("workflow_repair_seed") == 1
 
 
+def test_v4_failure_distribution_targets_handoff_gaps():
+    from scripts.generate_finetune_data import _failure_class_for_index
+
+    categories = [_failure_class_for_index(index, dataset_version="figment_sft_v4") for index in range(100)]
+
+    assert categories.count("radio_handoff") == 25
+    assert categories.count("sbar_handoff_usefulness") == 22
+    assert categories.count("source_card_discipline") == 14
+    assert categories.count("low_resource_constraints") == 10
+    assert categories.count("missing_observation_prioritization") == 10
+    assert categories.count("workflow_repair_seed") == 7
+    assert categories.count("rural_clinic_intake") == 4
+    assert categories.count("disaster_triage") == 3
+    assert categories.count("escalation_precision") == 5
+
+
 def test_v3_case_specs_include_field_workflow_metadata_and_safe_boundaries():
     from figment.retrieval import load_protocol_cards
     from scripts.generate_finetune_data import case_spec_record
@@ -155,6 +171,42 @@ def test_v3_case_specs_include_field_workflow_metadata_and_safe_boundaries():
     assert 1 <= len(prepared.expected_missing_observations) <= 8
     assert spec.structured_intake["workflow_constraint"]
     assert "medication" not in json.dumps(forbidden_behavior_for_version("figment_sft_v3")).lower()
+
+
+def test_v4_case_specs_use_field_workflow_policy_and_handoff_focus():
+    from figment.retrieval import load_protocol_cards
+    from scripts.generate_finetune_data import case_spec_record
+    from scripts.generate_finetune_data import forbidden_behavior_for_version
+    from scripts.generate_finetune_data import generate_case_spec
+    from scripts.generate_finetune_data import prepare_case
+
+    cards_by_id = {str(card["card_id"]): card for card in load_protocol_cards()}
+    spec = generate_case_spec(0, cards_by_id, dataset_version="figment_sft_v4")
+    prepared = prepare_case(spec, cards_by_id)
+    record = case_spec_record(prepared)
+
+    assert spec.failure_class == "radio_handoff"
+    assert spec.target_protocol_card_id == "REFERRAL-SBAR-v1"
+    assert spec.structured_intake["workflow_category"] == "radio_handoff"
+    assert "V4 field-workflow category" in spec.structured_intake["responder_note"]
+    assert "V3 field-workflow category" not in spec.structured_intake["responder_note"]
+    assert "field_workflow" in spec.tags
+    assert "sbar" in spec.tags
+    assert record["dataset_version"] == "figment_sft_v4"
+    assert "medication" not in json.dumps(forbidden_behavior_for_version("figment_sft_v4")).lower()
+
+
+def test_v4_escalation_precision_cases_are_hard_negative_safety_rows():
+    from figment.retrieval import load_protocol_cards
+    from scripts.generate_finetune_data import generate_case_spec
+
+    cards_by_id = {str(card["card_id"]): card for card in load_protocol_cards()}
+    spec = generate_case_spec(95, cards_by_id, dataset_version="figment_sft_v4")
+
+    assert spec.failure_class == "escalation_precision"
+    assert spec.target_protocol_card_id == "SAFETY-BOUNDARIES-v1"
+    assert spec.high_risk is True
+    assert spec.structured_intake["workflow_category"] == "escalation_precision"
 
 
 def test_v3_exclusion_rejects_exact_or_near_eval_neighbors():
@@ -210,6 +262,34 @@ def test_v3_repair_scope_schedule_matches_field_workflow_plan():
         "protocol_urgency": 60,
         "schema": 60,
     }
+
+
+def test_v4_repair_scope_schedule_targets_handoff_and_citations():
+    from scripts.augment_finetune_repair_rows import _scope_schedule
+
+    counts = Counter(_scope_schedule(100, dataset_version="figment_sft_v4"))
+
+    assert counts == {
+        "handoff_note_sbar": 45,
+        "citations_and_pathways": 25,
+        "missing_observations": 15,
+        "forbidden_clinical_language": 5,
+        "protocol_urgency": 5,
+        "schema": 5,
+    }
+
+
+def test_v4_full_corpus_wrapper_pins_v4_defaults():
+    from scripts.generate_v4_full_corpus import DEFAULT_ARGS
+    from scripts.generate_v4_full_corpus import build_corpus_args
+
+    assert DEFAULT_ARGS[DEFAULT_ARGS.index("--dataset-version") + 1] == "figment_sft_v4"
+    assert DEFAULT_ARGS[DEFAULT_ARGS.index("--navigator-count") + 1] == "1500"
+    assert DEFAULT_ARGS[DEFAULT_ARGS.index("--repair-count") + 1] == "150"
+    assert DEFAULT_ARGS[DEFAULT_ARGS.index("--output") + 1] == "data/finetune/figment_sft_v4.jsonl"
+    assert DEFAULT_ARGS[DEFAULT_ARGS.index("--modal-output-dir") + 1] == "data/finetune/modal/figment_sft_v4"
+    args = build_corpus_args(["--navigator-count", "2", "--output", "tmp/smoke.jsonl"])
+    assert args[-4:] == ["--navigator-count", "2", "--output", "tmp/smoke.jsonl"]
 
 
 def test_merge_finetune_shards_writes_sorted_rows_and_manifest(tmp_path):

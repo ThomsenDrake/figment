@@ -130,6 +130,34 @@ def test_strict_validator_rejects_known_but_unretrieved_card_citation() -> None:
     assert any("not in allowed/retrieved card IDs" in failure for failure in result.failures)
 
 
+def test_strict_validator_allows_known_fired_rule_card_even_when_retrieval_missed_it() -> None:
+    output = _navigator_output(
+        source_cards=["CHEST-PAIN-ESCALATION-v1"],
+        candidate_protocol_pathways=[
+            {
+                "card_id": "CHEST-PAIN-ESCALATION-v1",
+                "reason_relevant": "Chest pain red flag fired deterministically.",
+            }
+        ],
+    )
+
+    result = validate_navigator_output(
+        output,
+        {
+            "CHEST-PAIN-ESCALATION-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "WOUND-INFECTION-ESCALATION-v1",
+        },
+        urgency_floor="emergency",
+        confirmed_intake=_confirmed_chest_pain_intake(),
+        rule_results=[_chest_rule()],
+        retrieved_card_ids={"SAFETY-BOUNDARIES-v1"},
+        strict_schema=True,
+    )
+
+    assert result.passed
+
+
 def test_strict_validator_rejects_generic_missing_info_and_hallucinated_sbar_facts() -> None:
     output = _navigator_output(
         missing_info_to_collect=["ask anything else that seems relevant"],

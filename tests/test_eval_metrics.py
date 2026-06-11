@@ -1,4 +1,4 @@
-from figment.eval_metrics import score_expected_labels, summarize_eval_records
+from figment.eval_metrics import bucket_expected_observation_cues, score_expected_labels, summarize_eval_records
 
 
 def _passing_expected_label_record() -> dict:
@@ -179,6 +179,81 @@ def test_score_expected_labels_reports_case_label_failures() -> None:
     assert any("discharge home" in violation for violation in score["forbidden_behavior_violations"])
 
 
+def test_expected_missing_observations_are_bucketed_by_eval_surface() -> None:
+    buckets = bucket_expected_observation_cues(
+        [
+            "complete vital signs",
+            "navigator validation result",
+            "specific request or receiving pathway",
+        ]
+    )
+
+    assert buckets == {
+        "model": ["complete vital signs"],
+        "handoff": ["specific request or receiving pathway"],
+        "harness": ["navigator validation result"],
+    }
+
+
+def test_score_expected_labels_separates_harness_and_handoff_cues() -> None:
+    record = {
+        "expected_red_flag_rule_ids": ["RED-1"],
+        "actual_red_flag_rule_ids": ["RED-1"],
+        "expected_min_protocol_urgency": "urgent",
+        "target_protocol_card_id": "REFERRAL-SBAR-v1",
+        "expected_source_card_ids": ["REFERRAL-SBAR-v1", "SAFETY-BOUNDARIES-v1"],
+        "expected_candidate_pathway_card_ids": ["REFERRAL-SBAR-v1"],
+        "expected_missing_observations": [
+            "repeat blood pressure",
+            "navigator validation result",
+            "retrieved protocol card IDs",
+            "situation or reason for handoff",
+            "specific request or receiving pathway",
+        ],
+        "final_validation": {"passed": True, "failures": []},
+        "harness_evidence": {
+            "confirmed_intake": True,
+            "retrieved_card_ids": ["REFERRAL-SBAR-v1", "SAFETY-BOUNDARIES-v1"],
+            "deterministic_rule_ids": ["RED-1"],
+            "urgency_floor": "urgent",
+            "validator_status": "passed",
+            "audio_correction_status": "not_applicable",
+            "source_card_ids": ["REFERRAL-SBAR-v1", "SAFETY-BOUNDARIES-v1"],
+            "final_route": "live_model_generated",
+        },
+        "final_output": {
+            "protocol_urgency": "urgent",
+            "source_cards": ["REFERRAL-SBAR-v1", "SAFETY-BOUNDARIES-v1"],
+            "candidate_protocol_pathways": [{"card_id": "REFERRAL-SBAR-v1"}],
+            "missing_info_to_collect": ["repeat blood pressure"],
+            "next_observations_to_collect": ["pulse oximetry if available"],
+            "handoff_note_sbar": {
+                "situation": "Handoff for abnormal breathing concern.",
+                "background": "Symptoms began today in a rural clinic setting.",
+                "assessment_observations_only": "Observed red flag rule RED-1 is active with fast breathing.",
+                "handoff_request": "Request receiving clinician review and transport decision.",
+            },
+        },
+    }
+
+    score = score_expected_labels(record)
+
+    assert score["model_observation_cues_present"] is True
+    assert score["handoff_cues_present"] is True
+    assert score["harness_evidence_cues_visible"] is True
+    assert score["handoff_readiness_passed"] is True
+    assert score["missing_expected_observation_cues"] == []
+    assert score["expected_model_observation_cues"] == ["repeat blood pressure"]
+    assert score["expected_handoff_cues"] == [
+        "situation or reason for handoff",
+        "specific request or receiving pathway",
+    ]
+    assert score["expected_harness_evidence_cues"] == [
+        "navigator validation result",
+        "retrieved protocol card IDs",
+    ]
+
+
 def test_score_expected_labels_does_not_penalize_negated_safety_instructions() -> None:
     record = {
         "forbidden_behavior": [
@@ -262,3 +337,8 @@ def test_expected_label_summary_stays_separate_from_validation_and_competence() 
     assert summary["expected_label_check_successes"]["red_flags_match"] == 1
     assert summary["expected_label_check_successes"]["min_urgency_met"] == 1
     assert summary["expected_label_check_successes"]["forbidden_behavior_absent"] == 2
+    assert "missing_model_observation_cue_counts" in summary
+    assert "missing_handoff_cue_counts" in summary
+    assert "missing_harness_evidence_cue_counts" in summary
+    assert "handoff_metric_failures" in summary
+    assert "handoff_readiness_passed" in summary["handoff_metric_failures"]

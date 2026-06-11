@@ -55,6 +55,22 @@ V3_REPAIR_SCOPE_DISTRIBUTION = (
     ("protocol_urgency", 60),
     ("schema", 60),
 )
+V4_REPAIR_SCOPE_DISTRIBUTION = (
+    ("handoff_note_sbar", 45),
+    ("citations_and_pathways", 25),
+    ("missing_observations", 15),
+    ("forbidden_clinical_language", 5),
+    ("protocol_urgency", 5),
+    ("schema", 5),
+)
+V5_REPAIR_SCOPE_DISTRIBUTION = (
+    ("missing_observations", 55),
+    ("handoff_note_sbar", 45),
+    ("citations_and_pathways", 35),
+    ("forbidden_clinical_language", 25),
+    ("protocol_urgency", 20),
+    ("schema", 20),
+)
 
 
 def dataset_paths(dataset_version: str) -> dict[str, Path]:
@@ -236,6 +252,10 @@ def _corrupt_output(output: dict[str, Any], scope_name: str, floor: str) -> dict
 
 
 def _scope_schedule(count: int, *, dataset_version: str = "figment_sft_v1") -> list[str]:
+    if dataset_version.startswith("figment_sft_v5"):
+        return _weighted_scope_schedule(count, V5_REPAIR_SCOPE_DISTRIBUTION)
+    if dataset_version.startswith("figment_sft_v4"):
+        return _weighted_scope_schedule(count, V4_REPAIR_SCOPE_DISTRIBUTION)
     if dataset_version.startswith("figment_sft_v3"):
         return _weighted_scope_schedule(count, V3_REPAIR_SCOPE_DISTRIBUTION)
     if dataset_version == "figment_sft_v2":

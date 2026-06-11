@@ -228,5 +228,7 @@ def test_prompt_context_includes_sbar_template_and_internal_target_id_contract()
     assert internal_contract["optional_trace_only_keys"] == ["selected_required_observation_ids"]
     assert internal_contract["strip_before_user_display"] is True
     assert "selected_required_observation_ids" in internal_contract["selected_required_observation_ids"]
+    assert "Choose required observation IDs before writing observation text" in prompt
+    assert "recognizable responder-facing observation text" in internal_contract["selected_required_observation_ids"]
     assert "selected_required_observation_ids" not in context["navigator_output_schema"]
     assert "selected_required_observation_ids" not in context["required_json_skeleton"]

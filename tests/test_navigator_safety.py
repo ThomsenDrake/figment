@@ -344,8 +344,8 @@ class SelectedObservationIdsModelClient:
                 }
             ],
             "missing_info_to_collect": [
-                "Ask the patient to describe the pain in plain words.",
-                "Ask when the pain started and whether it changed.",
+                "chest pain description",
+                "onset and duration",
                 "available vital signs",
             ],
             "next_observations_to_collect": [],
@@ -366,6 +366,48 @@ class SelectedObservationIdsModelClient:
                 "CHEST-PAIN-ESCALATION-v1::required_observation::2",
                 "NOT-A-REAL-TARGET",
             ],
+        }
+
+
+class FiredCardOmittedFromRetrievalModelClient:
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, *_: Any, **__: Any) -> dict[str, Any]:
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": _stroke_rules(),
+            "intake_facts": [
+                {
+                    "fact": "Sudden one-sided weakness and trouble speaking.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "SAFETY-BOUNDARIES-v1",
+                    "reason_relevant": "Safety boundaries are always relevant.",
+                },
+                {
+                    "card_id": "REFERRAL-SBAR-v1",
+                    "reason_relevant": "SBAR supports escalation handoff.",
+                },
+            ],
+            "missing_info_to_collect": ["blood pressure if available"],
+            "next_observations_to_collect": ["speech and one-sided weakness status"],
+            "conflicts_or_uncertainties": ["Blood pressure not yet measured."],
+            "responder_checklist": ["Keep the stroke red flag visible."],
+            "do_not_do": ["Do not diagnose.", "Do not prescribe."],
+            "source_cards": ["SAFETY-BOUNDARIES-v1", "REFERRAL-SBAR-v1"],
+            "handoff_note_sbar": {
+                "situation": "one-sided weakness",
+                "background": "Age 56. Not pregnant.",
+                "assessment_observations_only": "Sudden one-sided weakness and trouble speaking. Stroke sign red flag fired.",
+                "handoff_request": "Request emergency review per cited local protocol cards.",
+            },
+            "responder_plain_language_script": "I am going to keep the stroke red flag visible and request emergency review.",
+            "safety_boundary": "Prototype protocol navigation only; no diagnosis or treatment order.",
         }
 
 
@@ -415,6 +457,58 @@ def _retrieved_chest_pain_cards() -> list[dict[str, Any]]:
                 ],
             },
         }
+    ]
+
+
+def _confirmed_stroke_intake() -> dict[str, Any]:
+    return {
+        "setting": "mobile clinic",
+        "patient_age": "56",
+        "pregnancy_status": "not_pregnant",
+        "chief_concern": "one-sided weakness",
+        "symptoms": "Sudden one-sided weakness and trouble speaking",
+        "vitals": "blood pressure not yet measured; pulse fast; respirations unlabored",
+        "responder_note": "Adult with acute stroke-sign concern.",
+        "confirmed": True,
+    }
+
+
+def _stroke_rules() -> list[dict[str, Any]]:
+    return [
+        {
+            "rule_id": "STROKE-001",
+            "label": "Stroke sign",
+            "urgency": "emergency",
+            "evidence": "one-sided weakness",
+            "card_id": "STROKE-SIGNS-v1",
+        }
+    ]
+
+
+def _retrieved_without_stroke_cards() -> list[dict[str, Any]]:
+    return [
+        {
+            "card_id": "SAFETY-BOUNDARIES-v1",
+            "title": "Safety boundaries",
+            "score": 1.0,
+            "source": "test",
+            "card": {
+                "card_id": "SAFETY-BOUNDARIES-v1",
+                "title": "Safety boundaries",
+                "required_observations": [],
+            },
+        },
+        {
+            "card_id": "REFERRAL-SBAR-v1",
+            "title": "Referral SBAR",
+            "score": 0.9,
+            "source": "test",
+            "card": {
+                "card_id": "REFERRAL-SBAR-v1",
+                "title": "Referral SBAR",
+                "required_observations": [],
+            },
+        },
     ]
 
 
@@ -496,12 +590,13 @@ def test_run_navigation_retries_hosted_output_repair_before_fallback(monkeypatch
         retrieved_cards=_retrieved_chest_pain_cards(),
     )
 
-    assert RepairingModelClient.calls == 2
+    assert RepairingModelClient.calls == 1
     assert output["protocol_urgency"] == "emergency"
     assert trace.validator_result["passed"] is True
     assert trace.model_route["fallback_tier"] == "configured"
     assert trace.model_route["fallback_reason"] is None
-    assert any("repaired by hosted retry" in event for event in trace.events)
+    assert trace.field_provenance["handoff_note_sbar"] == "deterministic_fallback"
+    assert any("handoff SBAR scaffold applied deterministically" in event for event in trace.events)
 
 
 def test_run_navigation_retains_valid_model_fields_with_field_provenance(monkeypatch) -> None:
@@ -523,7 +618,7 @@ def test_run_navigation_retains_valid_model_fields_with_field_provenance(monkeyp
     assert trace.field_provenance["responder_checklist"] == "model_raw"
     assert trace.field_provenance["handoff_note_sbar"] == "deterministic_fallback"
     assert trace.to_dict()["field_provenance"]["responder_checklist"] == "model_raw"
-    assert any("field-level" in event for event in trace.events)
+    assert any("handoff SBAR scaffold applied deterministically" in event for event in trace.events)
 
 
 def test_run_navigation_scrubs_audio_trace_payload(tmp_path: Path) -> None:
@@ -612,6 +707,26 @@ def test_run_navigation_enforces_retrieved_cards_and_observation_grounding(monke
     assert trace.to_dict()["model_route"]["final_route"] == "model_with_deterministic_patches"
 
 
+def test_run_navigation_allows_known_fired_card_when_retrieval_missed_it(monkeypatch) -> None:
+    monkeypatch.setattr(navigator, "ModelClient", FiredCardOmittedFromRetrievalModelClient)
+
+    output, trace = navigator.run_navigation(
+        _confirmed_stroke_intake(),
+        _stroke_rules(),
+        config=FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+        retrieved_cards=_retrieved_without_stroke_cards(),
+    )
+
+    assert trace.validator_result["passed"] is True
+    assert "STROKE-SIGNS-v1" in output["source_cards"]
+    assert "STROKE-SIGNS-v1" in {
+        pathway["card_id"] for pathway in output["candidate_protocol_pathways"]
+    }
+    assert trace.field_provenance["source_cards"] == "deterministic_fallback"
+    assert trace.field_provenance["candidate_protocol_pathways"] == "deterministic_fallback"
+    assert output["harness_evidence"]["deterministic_rule_card_ids"] == ["STROKE-SIGNS-v1"]
+
+
 def test_run_navigation_caps_focused_repair_attempts_and_traces_metrics(monkeypatch) -> None:
     MultiFailureRepairModelClient.calls = 0
     monkeypatch.setattr(navigator, "ModelClient", MultiFailureRepairModelClient)
@@ -678,8 +793,8 @@ def test_run_navigation_strips_and_traces_selected_required_observation_ids(monk
     assert SelectedObservationIdsModelClient.calls == 1
     assert "selected_required_observation_ids" not in output
     assert "shortness of breath report" in observation_text
-    assert "chest pain description" not in observation_text
-    assert "onset and duration" not in observation_text
+    assert "chest pain description" in observation_text
+    assert "onset and duration" in observation_text
     assert trace.validator_result["passed"] is True
     assert trace.model_route["model_selected_required_observation_ids"] == [
         "CHEST-PAIN-ESCALATION-v1::required_observation::1",

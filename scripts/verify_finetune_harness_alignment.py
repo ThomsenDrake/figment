@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from figment.focused_repair import build_focused_repair_prompts  # noqa: E402
+from figment.harness_evidence import build_harness_evidence  # noqa: E402
 from figment.observation_targets import required_observation_targets  # noqa: E402
 from figment.eval_metrics import score_expected_labels  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
@@ -25,8 +26,11 @@ from figment.validators import urgency_floor_from_rules  # noqa: E402
 from figment.validators import validate_navigator_output  # noqa: E402
 from scripts.augment_finetune_repair_rows import _corrupt_output  # noqa: E402
 from scripts.generate_finetune_data import forbidden_behavior_for_version  # noqa: E402
+from scripts.generate_finetune_data import uses_v5_focused_policy  # noqa: E402
 from scripts.generate_finetune_data import v2_policy_issues  # noqa: E402
 from scripts.generate_finetune_data import v3_policy_issues  # noqa: E402
+from scripts.generate_finetune_data import v5_policy_issues  # noqa: E402
+from scripts.generate_finetune_data import uses_v3_field_workflow_policy  # noqa: E402
 
 
 DEFAULT_DATASET = Path("data/finetune/figment_sft_v1.jsonl")
@@ -101,7 +105,29 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
             ):
                 issue_type = "v2_forbidden_lexical_tripwire" if issue.startswith("forbidden_lexical_tripwire:") else f"v2_{issue}"
                 issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
-        if dataset_version.startswith("figment_sft_v3") and task_type != "focused_repair":
+        if uses_v5_focused_policy(dataset_version) and task_type != "focused_repair":
+            for issue in v5_policy_issues(
+                output,
+                failure_class=str(row.get("category") or row.get("metadata", {}).get("failure_class") or spec.get("failure_class") or ""),
+                expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                expected_candidate_pathway_card_ids=[
+                    str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                ],
+                structured_intake=intake,
+                rule_results=rule_results,
+                retrieved_cards=retrieved,
+                target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+            ):
+                issue_type = "v5_forbidden_lexical_tripwire" if issue.startswith("forbidden_lexical_tripwire:") else f"v5_{issue}"
+                issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+            _append_v5_metadata_issues(
+                issues,
+                row_number=row_number,
+                case_id=case_id,
+                row=row,
+                output=output,
+            )
+        elif uses_v3_field_workflow_policy(dataset_version) and task_type != "focused_repair":
             for issue in v3_policy_issues(
                 output,
                 failure_class=str(row.get("category") or row.get("metadata", {}).get("failure_class") or spec.get("failure_class") or ""),
@@ -178,7 +204,28 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
             for field in expected_fields:
                 if output.get(field) != base_gold.get(field):
                     issues.append(_issue(row_number, case_id, "focused_repair_field_not_from_base_gold", field=field))
-            if dataset_version.startswith("figment_sft_v3"):
+            if uses_v5_focused_policy(dataset_version):
+                reconstructed = json.loads(json.dumps(base_gold))
+                reconstructed.update(output)
+                for issue in v5_policy_issues(
+                    reconstructed,
+                    failure_class=str(spec.get("failure_class") or base_row.get("category") or ""),
+                    expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                    expected_candidate_pathway_card_ids=[
+                        str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                    ],
+                    structured_intake=intake,
+                    rule_results=rule_results,
+                    retrieved_cards=retrieved,
+                    target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                ):
+                    issue_type = (
+                        "v5_forbidden_lexical_tripwire"
+                        if issue.startswith("forbidden_lexical_tripwire:")
+                        else f"v5_{issue}"
+                    )
+                    issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+            elif uses_v3_field_workflow_policy(dataset_version):
                 reconstructed = json.loads(json.dumps(base_gold))
                 reconstructed.update(output)
                 for issue in v3_policy_issues(
@@ -228,17 +275,30 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
         expected_score = score_expected_labels(
             {
                 "case_id": case_id,
+                "structured_intake": intake,
                 "target_protocol_card_id": spec.get("target_protocol_card_id"),
                 "expected_min_protocol_urgency": spec.get("expected_min_protocol_urgency"),
                 "expected_red_flag_rule_ids": spec.get("expected_red_flag_rule_ids", []),
                 "expected_source_card_ids": spec.get("expected_source_card_ids", []),
                 "expected_candidate_pathway_card_ids": spec.get("expected_candidate_pathway_card_ids", []),
+                "expected_model_observation_cues": spec.get("expected_model_observation_cues", []),
+                "expected_handoff_cues": spec.get("expected_handoff_cues", []),
+                "expected_harness_evidence_cues": spec.get("expected_harness_evidence_cues", []),
                 "expected_missing_observations": spec.get("expected_missing_observations", []),
                 "forbidden_behavior": _forbidden_behavior_for_dataset_version(dataset_version),
                 "actual_red_flag_rule_ids": [str(rule["rule_id"]) for rule in rule_results],
                 "actual_protocol_urgency": output.get("protocol_urgency"),
                 "actual_source_card_ids": _string_list(output.get("source_cards")),
                 "actual_candidate_pathway_card_ids": _candidate_ids(output.get("candidate_protocol_pathways")),
+                "retrieved_card_ids": retrieved_ids,
+                "harness_evidence": build_harness_evidence(
+                    confirmed_intake=intake,
+                    retrieved_card_ids=retrieved_ids,
+                    rule_results=rule_results,
+                    urgency_floor=floor,
+                    validator_result=validation,
+                    final_output=output,
+                ),
                 "final_output": output,
                 "final_validation": validation,
             }
@@ -272,6 +332,53 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _issue(row_number: int, case_id: str, issue_type: str, **details: Any) -> dict[str, Any]:
     return {"row_number": row_number, "case_id": case_id, "type": issue_type, **details}
+
+
+def _append_v5_metadata_issues(
+    issues: list[dict[str, Any]],
+    *,
+    row_number: int,
+    case_id: str,
+    row: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    if metadata.get("dataset_version") != "figment_sft_v5":
+        issues.append(_issue(row_number, case_id, "v5_metadata_dataset_version_missing"))
+    if metadata.get("training_focus") != row.get("category"):
+        issues.append(
+            _issue(
+                row_number,
+                case_id,
+                "v5_metadata_training_focus_mismatch",
+                training_focus=metadata.get("training_focus"),
+                category=row.get("category"),
+            )
+        )
+    excluded = metadata.get("excluded_eval_case_ids")
+    if not isinstance(excluded, list) or not {
+        "field_workflow_holdout_v1-000054",
+        "field_workflow_holdout_v1-000099",
+    } <= {str(item) for item in excluded}:
+        issues.append(_issue(row_number, case_id, "v5_metadata_excluded_eval_case_ids_missing"))
+
+    source_cards = set(_string_list(output.get("source_cards")))
+    missing_source = [card_id for card_id in _string_list(metadata.get("must_include_source_cards")) if card_id not in source_cards]
+    if missing_source:
+        issues.append(_issue(row_number, case_id, "v5_metadata_must_include_source_cards_missing", missing=missing_source))
+
+    required_selected_ids = _string_list(metadata.get("must_include_selected_required_observation_ids"))
+    selected_ids = set(_string_list(output.get("selected_required_observation_ids")))
+    missing_selected = [target_id for target_id in required_selected_ids if target_id not in selected_ids]
+    if missing_selected:
+        issues.append(
+            _issue(
+                row_number,
+                case_id,
+                "v5_metadata_must_include_selected_required_observation_ids_missing",
+                missing=missing_selected,
+            )
+        )
 
 
 def _string_list(value: Any) -> list[str]:

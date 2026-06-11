@@ -1,0 +1,34 @@
+{
+  "base_url": "http://127.0.0.1:8001/v1",
+  "competence_successes": 2,
+  "counts_as_50_case_local_llm_competence": true,
+  "counts_as_no_cloud_route_proof": true,
+  "endpoint_metadata_path": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf/endpoint_metadata.json",
+  "eval_evidence_manifest_path": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf/eval_evidence_manifest.json",
+  "eval_records_path": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf/local_4b_eval.jsonl",
+  "eval_summary_path": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf/eval_summary.json",
+  "fallback_uses": 0,
+  "final_validation_successes": 150,
+  "full_weight_artifact": {
+    "model_safetensors_bytes": 7947142640,
+    "model_safetensors_sha256": "55d4e2519456c4a9bddf596b0748d630e3b2ce6ff6f4c2b7ed3e07e2b00dad42",
+    "repo": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "revision": "dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f"
+  },
+  "latency_ms": {
+    "case_count": 150,
+    "max": 5669.171,
+    "mean": 4512.943,
+    "min": 3354.109,
+    "p50": 4503.949,
+    "p95": 4714.603
+  },
+  "missing_trace_hash_case_ids": [],
+  "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+  "output_dir": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf",
+  "route_smoke_path": "/eval_results/figment_sft_v5_field_workflow_holdout_modal_gpu_20260611_h100_gguf/route_smoke.json",
+  "route_smoke_status": "passed",
+  "status": "eval_completed",
+  "total_cases": 150,
+  "trace_hash_count": 150
+}

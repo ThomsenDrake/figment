@@ -5,17 +5,21 @@ from __future__ import annotations
 import argparse
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sys
 from time import perf_counter
 from typing import Any
+import urllib.error
+import urllib.parse
+import urllib.request
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from figment.config import FigmentConfig  # noqa: E402
-from figment.eval_metrics import score_expected_labels, summarize_eval_records  # noqa: E402
+from figment.eval_metrics import score_expected_labels, score_handoff_readiness, summarize_eval_records  # noqa: E402
 from figment.field_provenance import (  # noqa: E402
     DETERMINISTIC_FALLBACK,
     accepted_raw_fields_from_failures,
@@ -24,7 +28,8 @@ from figment.field_provenance import (  # noqa: E402
     merge_field_provenance,
     model_raw_field_provenance,
 )  # noqa: E402
-from figment.focused_repair import build_focused_repair_prompts  # noqa: E402
+from figment.focused_repair import build_focused_repair_prompts, missing_mandatory_source_cards  # noqa: E402
+from figment.harness_evidence import build_harness_evidence  # noqa: E402
 from figment.model_client import ModelClient, ModelClientError, canned_navigator_output  # noqa: E402
 from figment.observation_targets import (  # noqa: E402
     NavigationScaffoldResult,
@@ -34,7 +39,7 @@ from figment.observation_targets import (  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
 from figment.retrieval import known_card_ids, query_from_intake, search_protocol_cards  # noqa: E402
 from figment.rules import run_red_flag_checks  # noqa: E402
-from figment.trace import stable_hash  # noqa: E402
+from figment.trace import derive_model_route, stable_hash  # noqa: E402
 from figment.validators import urgency_floor_from_rules, validate_navigator_output  # noqa: E402
 
 
@@ -84,7 +89,10 @@ def run_eval(
     else:
         for record in records:
             sys.stdout.write(f"{json.dumps(record, sort_keys=True)}\n")
-    return _summarize(records, config, case_paths, output_path)
+    summary = _summarize(records, config, case_paths, output_path)
+    if output_path is not None:
+        _write_eval_bundle_metadata(summary, records, config, case_paths, output_path)
+    return summary
 
 
 def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any]:
@@ -108,6 +116,13 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
     repair_attempted = False
     fallback_used = False
     fallback_reason: str | None = None
+    competence_repair_attempted = False
+    competence_repair_success = False
+    competence_repair_scope: str | None = None
+    competence_repaired_output: dict[str, Any] | None = None
+    competence_repair_validation = {"passed": False, "failures": ["competence repair not attempted"]}
+    handoff_readiness_before: dict[str, Any] | None = None
+    handoff_readiness_after: dict[str, Any] | None = None
     final_output: dict[str, Any]
     final_validation: dict[str, Any]
     field_provenance: dict[str, str] = {}
@@ -155,6 +170,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                 retrieved_cards=retrieved,
                 rule_results=rule_results,
                 urgency_floor=floor,
+                confirmed_intake=intake,
             )
             raw_output = scaffold_result.output
             _absorb_scaffold_trace(
@@ -259,13 +275,81 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                 final_validation = fallback_validation
                 field_provenance = deterministic_field_provenance()
 
+    if final_validation["passed"] and config.model_backend != "canned":
+        handoff_readiness_before = score_handoff_readiness(
+            final_output,
+            actual_red_flag_rule_ids=[str(rule.get("rule_id")) for rule in rule_results if rule.get("rule_id")],
+            source_card_ids=final_output.get("source_cards", []),
+            validation_result=final_validation,
+        )
+        if handoff_readiness_before.get("handoff_readiness_passed") is not True:
+            competence_fallback_output, _competence_fallback_validation, competence_fallback_scaffold = _run_fallback(
+                intake,
+                rule_results,
+                retrieved,
+                floor,
+                known_cards,
+                retrieved_ids,
+            )
+            (
+                competence_repaired_output,
+                competence_repair_validation,
+                competence_repair_attempted,
+                competence_merged_output,
+                competence_merged_validation,
+                competence_merged_field_provenance,
+            ) = _try_field_level_model_output(
+                client=client,
+                prompt=prompt,
+                context={
+                    **context,
+                    "handoff_readiness_metrics": handoff_readiness_before,
+                },
+                raw_output=final_output,
+                validation_failures=_handoff_competence_failures(handoff_readiness_before),
+                fallback_output=competence_fallback_output,
+                known_cards=known_cards,
+                floor=floor,
+                intake=intake,
+                rule_results=rule_results,
+                retrieved=retrieved,
+                retrieved_ids=retrieved_ids,
+                scaffold_patched_fields=scaffold_patched_fields,
+            )
+            competence_repair_scope = "handoff_note_sbar" if competence_repair_attempted else None
+            if competence_merged_output is not None and competence_merged_validation is not None:
+                after = score_handoff_readiness(
+                    competence_merged_output,
+                    actual_red_flag_rule_ids=[str(rule.get("rule_id")) for rule in rule_results if rule.get("rule_id")],
+                    source_card_ids=competence_merged_output.get("source_cards", []),
+                    validation_result=competence_merged_validation,
+                )
+                handoff_readiness_after = after
+                if after.get("handoff_readiness_passed") is True:
+                    final_output = competence_merged_output
+                    final_validation = competence_merged_validation
+                    field_provenance = competence_merged_field_provenance
+                    competence_repair_success = True
+                    if (
+                        field_provenance.get("missing_info_to_collect") == DETERMINISTIC_FALLBACK
+                        or field_provenance.get("next_observations_to_collect") == DETERMINISTIC_FALLBACK
+                    ):
+                        _absorb_scaffold_trace(
+                            competence_fallback_scaffold,
+                            scaffold_patched_fields=scaffold_patched_fields,
+                            filled_required_observation_ids=filled_required_observation_ids,
+                            model_selected_required_observation_ids=model_selected_required_observation_ids,
+                            invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
+                            stripped_trace_only_fields=stripped_trace_only_fields,
+                        )
+
     field_level_fallback_used = has_deterministic_patches(field_provenance)
 
     raw_success = raw_attempted and raw_validation["passed"] and not scaffold_patched_fields
     repair_success = repair_attempted and repair_validation["passed"]
     fallback_success = fallback_used and fallback_validation["passed"]
     fallback_tier = "canned" if fallback_used else "configured"
-    competence_success = bool(raw_success or repair_success)
+    competence_success = bool(raw_success or repair_success or competence_repair_success)
     model_route = {
         "model_stack": config.model_stack,
         "model_backend": config.model_backend,
@@ -279,6 +363,18 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
         "stripped_trace_only_fields": stripped_trace_only_fields,
     }
+    model_route = derive_model_route(model_route, final_validation, [], field_provenance=field_provenance)
+    harness_evidence = build_harness_evidence(
+        confirmed_intake=intake,
+        retrieved_card_ids=retrieved_ids,
+        rule_results=rule_results,
+        urgency_floor=floor,
+        validator_result=final_validation,
+        final_output=final_output,
+        model_route=model_route,
+    )
+    final_output = dict(final_output)
+    final_output["harness_evidence"] = harness_evidence
     trace_payload = {
         "case_id": case["case_id"],
         "input_hash": stable_hash(intake),
@@ -286,6 +382,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "retrieved_card_ids": retrieved_ids,
         "prompt_template_hash": prompt_hash,
         "model_route": model_route,
+        "harness_evidence": harness_evidence,
         "navigator_output": final_output,
         "validator_result": final_validation,
         "field_provenance": field_provenance,
@@ -305,7 +402,11 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "expected_min_protocol_urgency": case.get("expected_min_protocol_urgency"),
         "expected_red_flag_rule_ids": case.get("expected_red_flag_rule_ids", []),
         "expected_source_card_ids": case.get("expected_source_card_ids", []),
+        "expected_candidate_pathway_card_ids": case.get("expected_candidate_pathway_card_ids", []),
         "expected_missing_observations": case.get("expected_missing_observations", []),
+        "expected_model_observation_cues": case.get("expected_model_observation_cues", []),
+        "expected_handoff_cues": case.get("expected_handoff_cues", []),
+        "expected_harness_evidence_cues": case.get("expected_harness_evidence_cues", []),
         "forbidden_behavior": case.get("forbidden_behavior", []),
         "actual_red_flag_rule_ids": [rule["rule_id"] for rule in rule_results],
         "actual_protocol_urgency": final_output.get("protocol_urgency"),
@@ -327,16 +428,26 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "raw_configured_model_success": raw_success,
         "repair_attempted": repair_attempted,
         "repair_success": repair_success,
+        "validation_repair_attempted": repair_attempted,
+        "validation_repair_success": repair_success,
+        "competence_repair_attempted": competence_repair_attempted,
+        "competence_repair_success": competence_repair_success,
+        "competence_repair_scope": competence_repair_scope,
+        "handoff_readiness_before_competence_repair": handoff_readiness_before,
+        "handoff_readiness_after_competence_repair": handoff_readiness_after,
         "canned_fallback_used": fallback_used,
         "canned_fallback_success": fallback_success,
         "competence_success": competence_success,
         "raw_validation": raw_validation,
         "repair_validation": repair_validation,
+        "competence_repair_validation": competence_repair_validation,
         "fallback_validation": fallback_validation,
         "validation_result": final_validation,
         "final_validation": final_validation,
+        "harness_evidence": harness_evidence,
         "raw_model_output": raw_output,
         "repaired_output": repaired_output,
+        "competence_repaired_output": competence_repaired_output,
         "fallback_output": fallback_output,
         "final_output": final_output,
         "field_provenance": field_provenance,
@@ -361,6 +472,7 @@ def _run_fallback(
         retrieved_cards=retrieved,
         rule_results=rule_results,
         urgency_floor=floor,
+        confirmed_intake=intake,
     )
     output = scaffold.output
     validation = _validate_output(output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
@@ -454,6 +566,15 @@ def _try_field_level_model_output(
         if not isinstance(repair_output, dict):
             repair_validation = {"passed": False, "failures": ["repair output was not an object"]}
             continue
+        missing_source_cards = missing_mandatory_source_cards(focused_prompt.scope, repair_output)
+        if missing_source_cards:
+            repair_validation = {
+                "passed": False,
+                "failures": [
+                    f"repair omitted mandatory source card {card_id}" for card_id in missing_source_cards
+                ],
+            }
+            continue
         for field in focused_prompt.scope.fields:
             if field in repair_output:
                 repaired_fields[field] = repair_output[field]
@@ -501,6 +622,18 @@ def _mark_deterministic_patch_fields(provenance: dict[str, str], fields: set[str
     for field in fields:
         if field in provenance:
             provenance[field] = DETERMINISTIC_FALLBACK
+
+
+def _handoff_competence_failures(metrics: dict[str, Any]) -> list[str]:
+    failures = ["handoff_note_sbar handoff_readiness_passed failed"]
+    for key, value in sorted(metrics.items()):
+        if key.startswith("sbar_") and value is False:
+            failures.append(f"handoff_note_sbar {key} failed")
+        elif key == "handoff_brevity_ok" and value is False:
+            failures.append("handoff_note_sbar handoff_brevity_ok failed")
+        elif key == "handoff_unsupported_fact_count" and value:
+            failures.append(f"handoff_note_sbar unsupported fact count: {value}")
+    return failures
 
 
 def _repair_prompt(
@@ -554,6 +687,9 @@ def _summarize(
             "output_path": str(output_path) if output_path else None,
         }
     )
+    runtime_errors = _runtime_error_summary(records)
+    summary["runtime_error_summary"] = runtime_errors
+    summary["scored_reporting_eligible"] = runtime_errors["critical_runtime_error_count"] == 0
     if config.model_backend == "llama_cpp":
         summary["local_llm_evidence"] = _local_llm_evidence_summary(summary, config)
     return summary
@@ -568,6 +704,15 @@ def _local_llm_evidence_summary(summary: dict[str, Any], config: FigmentConfig) 
         "model_stack": config.model_stack,
         "model_id": config.active_model_id,
         "llama_base_url": config.llama_base_url,
+        "server_command": os.getenv("LLAMA_SERVER_COMMAND") or None,
+        "gguf_path": os.getenv("LOCAL_GGUF_PATH") or os.getenv("LLAMA_ARG_MODEL") or None,
+        "gguf_sha256": os.getenv("LOCAL_GGUF_SHA256") or None,
+        "n_ctx": _optional_int_env("LLAMA_N_CTX") or _optional_int_env("LLAMA_ARG_CTX_SIZE"),
+        "n_parallel": _optional_int_env("LLAMA_N_PARALLEL") or _optional_int_env("LLAMA_ARG_N_PARALLEL"),
+        "prompt_cache": os.getenv("LLAMA_PROMPT_CACHE") or None,
+        "models_endpoint": _models_endpoint_metadata(config.llama_base_url),
+        "runtime_error_summary": summary.get("runtime_error_summary", {}),
+        "scored_reporting_eligible": summary.get("scored_reporting_eligible"),
         "total_cases": total_cases,
         "competence_successes": competence_successes,
         "raw_configured_model_successes": summary.get("raw_configured_model_successes", 0),
@@ -582,6 +727,109 @@ def _local_llm_evidence_summary(summary: dict[str, Any], config: FigmentConfig) 
         ),
         "real_eval_command": REAL_LLAMA_CPP_EVAL_COMMAND,
     }
+
+
+def _runtime_error_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    markers = {
+        "context_size_exceeded": ("Context size has been exceeded",),
+        "kv_cache_failure": ("failed to find free space in the KV cache", "KV cache"),
+        "server_http_500": ("http_status=500", "HTTP Error 500", " 500 "),
+    }
+    text_by_record = {
+        str(record.get("case_id") or index): json.dumps(
+            {
+                "raw_validation": record.get("raw_validation"),
+                "repair_validation": record.get("repair_validation"),
+                "competence_repair_validation": record.get("competence_repair_validation"),
+                "fallback_validation": record.get("fallback_validation"),
+                "final_validation": record.get("final_validation"),
+            },
+            sort_keys=True,
+        )
+        for index, record in enumerate(records, start=1)
+    }
+    summary: dict[str, Any] = {
+        "context_size_exceeded": False,
+        "kv_cache_failure": False,
+        "server_http_500": False,
+        "critical_runtime_error_count": 0,
+        "affected_case_ids": [],
+    }
+    affected: set[str] = set()
+    for case_id, text in text_by_record.items():
+        for key, key_markers in markers.items():
+            if any(marker in text for marker in key_markers):
+                summary[key] = True
+                affected.add(case_id)
+    summary["affected_case_ids"] = sorted(affected)
+    summary["critical_runtime_error_count"] = sum(
+        int(bool(summary[key])) for key in ("context_size_exceeded", "kv_cache_failure", "server_http_500")
+    )
+    return summary
+
+
+def _models_endpoint_metadata(base_url: str) -> dict[str, Any]:
+    url = _openai_models_url(base_url)
+    try:
+        with urllib.request.urlopen(url, timeout=2.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return {"url": url, "available": False, "error": str(exc)[:200]}
+    return {"url": url, "available": True, "payload": payload}
+
+
+def _openai_models_url(base_url: str) -> str:
+    parts = urllib.parse.urlsplit(base_url.strip())
+    path = parts.path.rstrip("/")
+    if path.endswith("/v1"):
+        path = f"{path}/models"
+    elif path.endswith("/models"):
+        pass
+    else:
+        path = f"{path}/models" if path else "/v1/models"
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _optional_int_env(name: str) -> int | None:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _write_eval_bundle_metadata(
+    summary: dict[str, Any],
+    records: list[dict[str, Any]],
+    config: FigmentConfig,
+    case_paths: list[Path],
+    output_path: Path,
+) -> None:
+    output_dir = output_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = output_dir / "eval_summary.json"
+    manifest_path = output_dir / "eval_evidence_manifest.json"
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest = {
+        "output_jsonl": str(output_path),
+        "summary_json": str(summary_path),
+        "case_paths": [str(path) for path in case_paths],
+        "model_backend": config.model_backend,
+        "model_stack": config.model_stack,
+        "active_model_id": config.active_model_id,
+        "total_cases": len(records),
+        "trace_hashes": [
+            {"case_id": record.get("case_id"), "trace_hash": record.get("trace_hash")}
+            for record in records
+        ],
+        "all_trace_hashes_present": all(bool(record.get("trace_hash")) for record in records),
+        "runtime_error_summary": summary.get("runtime_error_summary", {}),
+        "scored_reporting_eligible": summary.get("scored_reporting_eligible"),
+        "local_llm_evidence": summary.get("local_llm_evidence"),
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:

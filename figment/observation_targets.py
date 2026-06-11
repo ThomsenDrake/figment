@@ -103,6 +103,7 @@ def apply_navigation_scaffolding(
     retrieved_cards: Iterable[Mapping[str, Any]],
     rule_results: list[dict[str, Any]],
     urgency_floor: str,
+    confirmed_intake: Mapping[str, Any] | None = None,
 ) -> NavigationScaffoldResult:
     """Patch deterministic control fields and required-observation omissions."""
 
@@ -146,6 +147,15 @@ def apply_navigation_scaffolding(
     if filled_ids:
         patched_fields.update({"missing_info_to_collect", "next_observations_to_collect"})
 
+    if confirmed_intake is not None and _scaffold_handoff_note_sbar(
+        patched,
+        confirmed_intake=confirmed_intake,
+        rule_results=rule_results,
+        urgency_floor=urgency_floor,
+        source_card_ids=source_cards,
+    ):
+        patched_fields.add("handoff_note_sbar")
+
     return NavigationScaffoldResult(
         output=patched,
         patched_fields=patched_fields,
@@ -154,6 +164,51 @@ def apply_navigation_scaffolding(
         invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
         stripped_trace_only_fields=stripped_trace_only_fields,
     )
+
+
+def build_handoff_note_sbar_template(
+    intake: Mapping[str, Any],
+    rule_results: list[dict[str, Any]],
+    urgency_floor: str,
+    *,
+    source_card_ids: Iterable[Any] = (),
+) -> dict[str, str]:
+    """Build a deterministic, grounded SBAR draft from confirmed harness facts."""
+
+    situation = _first_text(
+        intake.get("chief_concern"),
+        intake.get("responder_note"),
+        "Confirmed field concern",
+    )
+    background_parts = []
+    if _has_value(intake.get("setting")):
+        background_parts.append(f"Setting: {intake['setting']}.")
+    if _has_value(intake.get("patient_age")):
+        background_parts.append(f"Age: {intake['patient_age']}.")
+    if _has_value(intake.get("pregnancy_status")):
+        background_parts.append(f"Pregnancy status: {intake['pregnancy_status']}.")
+
+    assessment_parts = []
+    if _has_value(intake.get("symptoms")):
+        assessment_parts.append(f"Symptoms: {intake['symptoms']}.")
+    if _has_value(intake.get("vitals")):
+        assessment_parts.append(f"Vitals: {intake['vitals']}.")
+    red_flag_labels = [
+        str(rule.get("label") or rule.get("rule_id"))
+        for rule in rule_results
+        if rule.get("label") or rule.get("rule_id")
+    ]
+    if red_flag_labels:
+        assessment_parts.append(f"Red flags: {'; '.join(red_flag_labels)}.")
+
+    source_suffix = _source_card_suffix(source_card_ids)
+    return {
+        "situation": str(situation),
+        "background": " ".join(background_parts) or "Background details pending from confirmed intake.",
+        "assessment_observations_only": " ".join(assessment_parts)
+        or "Assessment observations pending from confirmed intake.",
+        "handoff_request": f"Request {urgency_floor} review/escalation per cited local protocol cards{source_suffix}.",
+    }
 
 
 def targets_for_failure_cards(
@@ -172,6 +227,63 @@ def targets_for_failure_cards(
     return selected
 
 
+def _scaffold_handoff_note_sbar(
+    output: dict[str, Any],
+    *,
+    confirmed_intake: Mapping[str, Any],
+    rule_results: list[dict[str, Any]],
+    urgency_floor: str,
+    source_card_ids: Iterable[Any],
+) -> bool:
+    template = build_handoff_note_sbar_template(
+        confirmed_intake,
+        rule_results,
+        urgency_floor,
+        source_card_ids=source_card_ids,
+    )
+    handoff = output.get("handoff_note_sbar")
+    if not isinstance(handoff, Mapping):
+        output["handoff_note_sbar"] = template
+        return True
+
+    patched_handoff = dict(handoff)
+    changed = False
+    for field, template_value in template.items():
+        value = str(patched_handoff.get(field) or "").strip()
+        if not value or _handoff_slot_needs_scaffold(field, value, rule_results):
+            patched_handoff[field] = template_value
+            changed = True
+    if changed:
+        output["handoff_note_sbar"] = patched_handoff
+    return changed
+
+
+def _handoff_slot_needs_scaffold(field: str, value: str, rule_results: list[dict[str, Any]]) -> bool:
+    normalized = _normalize_text(value)
+    if field == "assessment_observations_only" and _unsafe_assessment_language(normalized):
+        return True
+    if field == "assessment_observations_only" and rule_results:
+        rule_markers = [
+            _normalize_text(str(rule.get(key, "")))
+            for rule in rule_results
+            for key in ("rule_id", "label")
+            if rule.get(key)
+        ]
+        return "red flag" not in normalized and "rule" not in normalized and not any(
+            marker and marker in normalized for marker in rule_markers
+        )
+    return False
+
+
+def _unsafe_assessment_language(normalized_text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:diagnos(?:e|is|ed)|prescrib(?:e|ed|ing)|administer|discharge|treat(?:ment)?|dose|dosing)\b",
+            normalized_text,
+        )
+    )
+
+
 def _fill_required_observation_targets(
     output: dict[str, Any],
     targets: list[dict[str, Any]],
@@ -179,7 +291,6 @@ def _fill_required_observation_targets(
     selected_required_observation_ids: Iterable[str] = (),
 ) -> list[str]:
     source_cards = {str(card_id) for card_id in output.get("source_cards", []) if str(card_id)}
-    selected_target_ids = {str(target_id) for target_id in selected_required_observation_ids if str(target_id)}
     actionable_targets = [
         target
         for target in targets
@@ -197,8 +308,7 @@ def _fill_required_observation_targets(
     missing_targets = [
         target
         for target in actionable_targets
-        if str(target["id"]) not in selected_target_ids
-        and not _target_present(target, combined_text, combined_tokens)
+        if not _target_present(target, combined_text, combined_tokens)
     ]
     if not missing_targets:
         return []
@@ -278,9 +388,12 @@ def _fired_rule_card_ids(rule_results: Iterable[Mapping[str, Any]]) -> list[str]
 
 def _scaffold_source_cards(value: Any, retrieved_ids: list[str], fired_card_ids: list[str]) -> list[str]:
     raw_source_cards = [str(card_id) for card_id in value if str(card_id)] if isinstance(value, list) else []
-    allowed = set(retrieved_ids)
-    source_cards = [card_id for card_id in raw_source_cards if card_id in allowed]
+    allowed = set(retrieved_ids) | set(fired_card_ids)
+    source_cards: list[str] = []
     for card_id in fired_card_ids:
+        if card_id not in source_cards:
+            source_cards.append(card_id)
+    for card_id in raw_source_cards:
         if card_id in allowed and card_id not in source_cards:
             source_cards.append(card_id)
     if not source_cards:
@@ -304,6 +417,19 @@ def _scaffold_candidate_pathways(value: Any, source_cards: list[str]) -> list[di
                     "reason_relevant": str(item.get("reason_relevant") or "Retrieved from confirmed intake."),
                 }
             )
+    existing_pathway_ids = {item["card_id"] for item in pathways}
+    for card_id in source_cards:
+        if card_id in existing_pathway_ids:
+            continue
+        pathways.append(
+            {
+                "card_id": card_id,
+                "reason_relevant": "Retrieved from confirmed intake and deterministic rule context.",
+            }
+        )
+        existing_pathway_ids.add(card_id)
+        if len(pathways) >= 3:
+            break
     if not pathways:
         pathways = [
             {
@@ -345,11 +471,34 @@ def _negated_phrases(text: str) -> list[str]:
     return phrases
 
 
+def _source_card_suffix(source_card_ids: Iterable[Any]) -> str:
+    ids = [str(card_id).strip() for card_id in source_card_ids if str(card_id).strip()]
+    return f" ({', '.join(ids[:4])})" if ids else ""
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if _has_value(value):
+            return str(value).strip()
+    return ""
+
+
+def _has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
 __all__ = [
     "NavigationScaffoldResult",
     "TRACE_ONLY_REQUIRED_OBSERVATION_IDS_KEY",
     "apply_navigation_scaffolding",
     "build_case_fact_ledger",
+    "build_handoff_note_sbar_template",
     "required_observation_targets",
     "targets_for_failure_cards",
 ]

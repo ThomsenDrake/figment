@@ -126,6 +126,68 @@ def test_modal_default_config_matches_first_run_plan():
     assert config["save_steps"] == 40
 
 
+def test_modal_v4_config_can_use_lower_lr_and_lora_controls():
+    module = _load_modal_module()
+
+    config = module.build_train_config(
+        dataset_version="figment_sft_v4",
+        output_name="figment-sft-v4-lora",
+        max_steps=900,
+        learning_rate=2e-5,
+        lora_r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        gradient_accumulation_steps=8,
+        validation_steps=50,
+        save_steps=100,
+    )
+
+    assert config["dataset_version"] == "figment_sft_v4"
+    assert config["learning_rate"] == 2e-5
+    assert config["lora_r"] == 16
+    assert config["lora_alpha"] == 32
+    assert config["lora_dropout"] == 0.05
+    assert config["gradient_accumulation_steps"] == 8
+    assert config["validation_steps"] == 50
+    assert config["save_steps"] == 100
+
+
+def test_modal_v5_config_can_resume_from_v4_adapter():
+    module = _load_modal_module()
+
+    config = module.build_train_config(
+        dataset_version="figment_sft_v5",
+        output_name="figment-sft-v5-lora",
+        resume_adapter_name="figment-sft-v4-lora",
+        resume_adapter_dataset_version="figment_sft_v4",
+    )
+
+    assert config["resume_adapter_name"] == "figment-sft-v4-lora"
+    assert config["resume_adapter_dataset_version"] == "figment_sft_v4"
+    assert config["resume_adapter_dir"] == "/checkpoints/figment_sft_v4/figment-sft-v4-lora"
+    assert config["output_dir"] == "/checkpoints/figment_sft_v5/figment-sft-v5-lora"
+
+
+def test_modal_entrypoint_exposes_v4_training_knobs():
+    source = (Path(__file__).resolve().parents[1] / "modal" / "finetune_figment_nemotron.py").read_text(
+        encoding="utf-8"
+    )
+
+    for parameter in (
+        "learning_rate",
+        "lora_r",
+        "lora_alpha",
+        "lora_dropout",
+        "gradient_accumulation_steps",
+        "validation_steps",
+        "save_steps",
+        "resume_adapter_name",
+        "resume_adapter_dataset_version",
+    ):
+        assert f"{parameter}:" in source
+        assert f"{parameter}={parameter}" in source or f'"{parameter}": {parameter}' in source
+
+
 def test_modal_merge_config_points_at_checkpoint_volume():
     module = _load_modal_module()
 

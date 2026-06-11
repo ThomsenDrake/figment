@@ -122,12 +122,15 @@ def build_focused_repair_prompt(
 
     allowed_fields = ", ".join(repair_scope.fields)
     selected_previous_values = {field: previous_output.get(field) for field in repair_scope.fields}
+    mandatory_source_cards = mandatory_source_card_ids_for_scope(repair_scope)
     repair_context = {
         "repair_scope": repair_scope.name,
         "allowed_fields": list(repair_scope.fields),
         "deterministic_validation_failures": list(repair_scope.failures),
         "urgency_floor": urgency_floor,
     }
+    if mandatory_source_cards:
+        repair_context["mandatory_source_cards"] = list(mandatory_source_cards)
     if repair_scope.name == "missing_observations":
         repair_context["required_observation_targets"] = targets_for_failure_cards(
             required_observation_targets or (),
@@ -142,10 +145,37 @@ def build_focused_repair_prompt(
         "Do not include markdown, commentary, chain-of-thought, or unrelated fields.\n"
         "Keep all unchanged facts grounded in confirmed intake, deterministic rules, and retrieved protocol cards.\n"
         "Do not diagnose, prescribe, dose, discharge, or override local protocol or deterministic red flags.\n"
+        f"{_mandatory_source_card_instruction(mandatory_source_cards)}"
         f"{_scope_instruction(repair_scope.name)}\n\n"
         f"FOCUSED_REPAIR_CONTEXT:\n{json.dumps(repair_context, indent=2, sort_keys=True)}\n\n"
         f"PREVIOUS_VALUES_FOR_ALLOWED_FIELDS:\n{json.dumps(selected_previous_values, indent=2, sort_keys=True)}"
     )
+
+
+def mandatory_source_card_ids_for_scope(scope: RepairScope) -> tuple[str, ...]:
+    """Return source-card IDs that a focused citation/pathway repair must retain."""
+
+    if scope.name != "citations_and_pathways":
+        return ()
+    ids: list[str] = []
+    for failure in scope.failures:
+        for card_id in re.findall(r"\b[A-Z][A-Z0-9-]+-v\d+\b", str(failure)):
+            if card_id not in ids:
+                ids.append(card_id)
+    return tuple(ids)
+
+
+def missing_mandatory_source_cards(scope: RepairScope, repair_output: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return mandatory source cards missing from a repair output."""
+
+    mandatory = mandatory_source_card_ids_for_scope(scope)
+    if not mandatory:
+        return ()
+    source_cards = repair_output.get("source_cards")
+    if not isinstance(source_cards, list):
+        return mandatory
+    cited = {str(card_id) for card_id in source_cards if str(card_id)}
+    return tuple(card_id for card_id in mandatory if card_id not in cited)
 
 
 def _classify_failure(failure: str) -> tuple[str, tuple[str, ...]]:
@@ -237,3 +267,12 @@ def _scope_instruction(scope_name: str) -> str:
     if scope_name == "schema":
         return "Repair only the missing or incorrectly typed schema fields. Preserve the required navigator schema shape."
     return "Repair only the allowed fields. Keep the response minimal and deterministic-validation oriented."
+
+
+def _mandatory_source_card_instruction(mandatory_source_cards: tuple[str, ...]) -> str:
+    if not mandatory_source_cards:
+        return ""
+    return (
+        f"Mandatory source cards: {', '.join(mandatory_source_cards)}.\n"
+        "Do not remove any mandatory source card.\n"
+    )

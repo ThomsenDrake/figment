@@ -9,13 +9,16 @@ from typing import Any
 from .config import FigmentConfig, load_config
 from .field_provenance import (
     DETERMINISTIC_FALLBACK,
+    MODEL_REPAIRED,
     accepted_raw_fields_from_failures,
     deterministic_field_provenance,
     has_deterministic_patches,
     merge_field_provenance,
     model_raw_field_provenance,
 )
-from .focused_repair import build_focused_repair_prompts
+from .eval_metrics import score_handoff_readiness
+from .focused_repair import build_focused_repair_prompts, missing_mandatory_source_cards
+from .harness_evidence import build_harness_evidence
 from .model_client import ModelClient, ModelClientError, canned_navigator_output
 from .observation_targets import (
     NavigationScaffoldResult,
@@ -24,7 +27,7 @@ from .observation_targets import (
 )
 from .prompt_builder import build_prompt
 from .retrieval import known_card_ids, query_from_intake, search_protocol_cards
-from .trace import FigmentTrace, scrub_audio_metadata, stable_hash, write_trace
+from .trace import FigmentTrace, derive_model_route, scrub_audio_metadata, stable_hash, write_trace
 from .validators import urgency_floor_from_rules, validate_audio_ready, validate_confirmed_intake, validate_navigator_output
 
 
@@ -93,6 +96,7 @@ def run_navigation(
         retrieved_cards=retrieved,
         rule_results=rule_results,
         urgency_floor=floor,
+        confirmed_intake=intake,
     )
     output = scaffold_result.output
     _absorb_scaffold_trace(
@@ -134,6 +138,7 @@ def run_navigation(
             retrieved_cards=retrieved,
             rule_results=rule_results,
             urgency_floor=floor,
+            confirmed_intake=intake,
         )
         output = fallback_scaffold.output
         _absorb_scaffold_trace(
@@ -149,8 +154,53 @@ def run_navigation(
         fallback_reason = fallback_reason or "navigator_validation_failure"
         field_provenance = deterministic_field_provenance()
         events.append("navigator output failed validation; deterministic fallback applied")
+    elif config.model_backend != "canned":
+        competence_result = _try_handoff_competence_repair(
+            client=client,
+            prompt=prompt,
+            output=output,
+            validation=validation,
+            field_provenance=field_provenance,
+            floor=floor,
+            intake=intake,
+            rule_results=rule_results,
+            retrieved=retrieved,
+            known_cards=card_ids,
+            events=events,
+            repair_metrics=repair_metrics,
+        )
+        if competence_result is not None:
+            output, validation, field_provenance = competence_result
     events.append("validation complete")
     field_level_fallback_used = has_deterministic_patches(field_provenance)
+    model_route = {
+        "model_stack": config.model_stack,
+        "model_backend": config.model_backend,
+        "model_id": config.active_model_id,
+        "fallback_tier": "canned" if config.model_backend == "canned" or fallback_reason else "configured",
+        "fallback_reason": fallback_reason,
+        "field_level_fallback_used": field_level_fallback_used,
+        "strict_validation": True,
+        "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
+        "filled_required_observation_ids": filled_required_observation_ids,
+        "model_selected_required_observation_ids": model_selected_required_observation_ids,
+        "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
+        "stripped_trace_only_fields": stripped_trace_only_fields,
+        **repair_metrics,
+    }
+    model_route = derive_model_route(model_route, validation.to_dict(), events, field_provenance=field_provenance)
+    harness_evidence = build_harness_evidence(
+        confirmed_intake=intake,
+        retrieved_card_ids=[item["card_id"] for item in retrieved],
+        rule_results=rule_results,
+        urgency_floor=floor,
+        validator_result=validation.to_dict(),
+        final_output=output,
+        model_route=model_route,
+        audio=trace_audio,
+    )
+    output = dict(output)
+    output["harness_evidence"] = harness_evidence
     trace = FigmentTrace(
         input_captured={
             "structured_intake": intake,
@@ -160,21 +210,7 @@ def run_navigation(
         red_flags=rule_results,
         retrieved_card_ids=[item["card_id"] for item in retrieved],
         prompt_template_hash=prompt_hash,
-        model_route={
-            "model_stack": config.model_stack,
-            "model_backend": config.model_backend,
-            "model_id": config.active_model_id,
-            "fallback_tier": "canned" if config.model_backend == "canned" or fallback_reason else "configured",
-            "fallback_reason": fallback_reason,
-            "field_level_fallback_used": field_level_fallback_used,
-            "strict_validation": True,
-            "deterministic_scaffold_patched_fields": sorted(scaffold_patched_fields),
-            "filled_required_observation_ids": filled_required_observation_ids,
-            "model_selected_required_observation_ids": model_selected_required_observation_ids,
-            "invalid_selected_required_observation_ids": invalid_selected_required_observation_ids,
-            "stripped_trace_only_fields": stripped_trace_only_fields,
-            **repair_metrics,
-        },
+        model_route=model_route,
         navigator_output=output,
         validator_result=validation.to_dict(),
         field_provenance=field_provenance,
@@ -232,6 +268,7 @@ def _try_field_level_model_output(
         retrieved_cards=retrieved,
         rule_results=rule_results,
         urgency_floor=floor,
+        confirmed_intake=intake,
     )
     fallback_output = fallback_scaffold.output
     accepted_raw_fields = accepted_raw_fields_from_failures(validation_failures)
@@ -273,6 +310,13 @@ def _try_field_level_model_output(
         if not isinstance(repair_output, dict):
             events.append(f"navigator focused repair for {focused_prompt.scope.name} returned non-object output")
             continue
+        missing_source_cards = missing_mandatory_source_cards(focused_prompt.scope, repair_output)
+        if missing_source_cards:
+            events.append(
+                "navigator focused repair omitted mandatory source cards: "
+                + ", ".join(missing_source_cards)
+            )
+            continue
         for field in focused_prompt.scope.fields:
             if field in repair_output:
                 repaired_fields[field] = repair_output[field]
@@ -302,6 +346,109 @@ def _try_field_level_model_output(
     return None
 
 
+def _try_handoff_competence_repair(
+    *,
+    client: ModelClient,
+    prompt: str,
+    output: dict[str, Any],
+    validation: Any,
+    field_provenance: dict[str, str],
+    floor: str,
+    intake: dict[str, Any],
+    rule_results: list[dict[str, Any]],
+    retrieved: list[dict[str, Any]],
+    known_cards: set[str],
+    events: list[str],
+    repair_metrics: dict[str, Any],
+) -> tuple[dict[str, Any], Any, dict[str, str]] | None:
+    before_metrics = score_handoff_readiness(
+        output,
+        actual_red_flag_rule_ids=[str(rule.get("rule_id")) for rule in rule_results if rule.get("rule_id")],
+        source_card_ids=output.get("source_cards", []),
+        validation_result=validation.to_dict(),
+    )
+    repair_metrics["handoff_readiness_before"] = before_metrics
+    if before_metrics.get("handoff_readiness_passed") is True:
+        repair_metrics["competence_repair_attempted"] = False
+        return None
+
+    failures = _handoff_competence_failures(before_metrics)
+    focused_prompts = [
+        item
+        for item in build_focused_repair_prompts(
+            original_prompt=prompt,
+            previous_output=output,
+            failures=failures,
+            urgency_floor=floor,
+            required_observation_targets=required_observation_targets(retrieved),
+        )
+        if item.scope.name == "handoff_note_sbar"
+    ]
+    if not focused_prompts:
+        return None
+
+    repair_metrics["competence_repair_attempted"] = True
+    repair_metrics["competence_repair_scope"] = "handoff_note_sbar"
+    repair_context = {
+        "intake": intake,
+        "rule_results": rule_results,
+        "retrieved_cards": retrieved,
+        "urgency_floor": floor,
+        "previous_output": output,
+        "validation_failures": failures,
+        "handoff_readiness_metrics": before_metrics,
+        "repair_scope": "handoff_note_sbar",
+    }
+    try:
+        repair_output = client.generate_json(focused_prompts[0].prompt, repair_context)
+    except ModelClientError:
+        events.append("navigator handoff competence repair backend failed")
+        return None
+    if not isinstance(repair_output, dict) or not isinstance(repair_output.get("handoff_note_sbar"), dict):
+        events.append("navigator handoff competence repair returned no handoff_note_sbar")
+        return None
+
+    candidate = dict(output)
+    candidate["handoff_note_sbar"] = repair_output["handoff_note_sbar"]
+    scaffold = apply_navigation_scaffolding(
+        candidate,
+        retrieved_cards=retrieved,
+        rule_results=rule_results,
+        urgency_floor=floor,
+        confirmed_intake=intake,
+    )
+    merged_validation = _validate_output(scaffold.output, known_cards, floor, intake, rule_results, retrieved)
+    after_metrics = score_handoff_readiness(
+        scaffold.output,
+        actual_red_flag_rule_ids=[str(rule.get("rule_id")) for rule in rule_results if rule.get("rule_id")],
+        source_card_ids=scaffold.output.get("source_cards", []),
+        validation_result=merged_validation.to_dict(),
+    )
+    repair_metrics["handoff_readiness_after"] = after_metrics
+    if merged_validation.passed and after_metrics.get("handoff_readiness_passed") is True:
+        merged_provenance = dict(field_provenance)
+        merged_provenance["handoff_note_sbar"] = MODEL_REPAIRED
+        repair_metrics["competence_repair_success"] = True
+        events.append("navigator handoff competence repaired by focused retry")
+        return scaffold.output, merged_validation, merged_provenance
+
+    repair_metrics["competence_repair_success"] = False
+    events.append("navigator handoff competence repair did not pass readiness")
+    return None
+
+
+def _handoff_competence_failures(metrics: dict[str, Any]) -> list[str]:
+    failures = ["handoff_note_sbar handoff_readiness_passed failed"]
+    for key, value in sorted(metrics.items()):
+        if key.startswith("sbar_") and value is False:
+            failures.append(f"handoff_note_sbar {key} failed")
+        elif key == "handoff_brevity_ok" and value is False:
+            failures.append("handoff_note_sbar handoff_brevity_ok failed")
+        elif key == "handoff_unsupported_fact_count" and value:
+            failures.append(f"handoff_note_sbar unsupported fact count: {value}")
+    return failures
+
+
 def _empty_repair_metrics() -> dict[str, Any]:
     return {
         "repair_attempt_count": 0,
@@ -310,6 +457,9 @@ def _empty_repair_metrics() -> dict[str, Any]:
         "repair_capped": False,
         "repair_latency_ms": 0.0,
         "repair_scopes": [],
+        "competence_repair_attempted": False,
+        "competence_repair_success": False,
+        "competence_repair_scope": None,
     }
 
 
@@ -334,6 +484,8 @@ def _absorb_scaffold_trace(
         events.append("invalid required-observation target ids ignored")
     if result.filled_required_observation_ids:
         events.append("required-observation targets filled deterministically")
+    if "handoff_note_sbar" in result.patched_fields:
+        events.append("handoff SBAR scaffold applied deterministically")
 
 
 def _extend_unique(items: list[str], values: list[str]) -> None:
