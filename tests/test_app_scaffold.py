@@ -553,13 +553,16 @@ def test_run_case_uses_environment_config_when_not_supplied(monkeypatch: pytest.
     assert result["trace"]["model_route"]["model_backend"] == "hosted_omni"
 
 
-def test_app_import_and_blocks_smoke() -> None:
+def test_app_import_and_server_smoke() -> None:
     app = importlib.import_module("app")
     config = FigmentConfig(model_backend="canned", audio_backend="none").validated()
 
     demo = app.build_app(config=config)
 
-    assert hasattr(demo, "queue")
+    assert demo.__class__.__name__ == "Server"
+    assert hasattr(demo, "api")
+    assert hasattr(demo, "launch")
+    assert {route.path for route in demo.routes} >= {"/", "/health"}
     assert app.TAB_TITLES == [
         "Intake",
         "Risk Check",

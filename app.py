@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import html
+import json
 from pathlib import Path
 from typing import Any
+
+from fastapi.responses import HTMLResponse
 
 from figment.audio_intake import confirm_audio_draft as _confirm_audio_draft
 from figment.audio_intake import draft_audio_intake as _draft_audio_intake
@@ -20,8 +23,10 @@ from figment.validators import urgency_floor_from_rules, validate_audio_ready
 
 try:
     import gradio as gr
+    from gradio.data_classes import FileData
 except (ImportError, OSError):  # pragma: no cover - lets unit tests import without gradio installed
     gr = None
+    FileData = Any  # type: ignore[misc, assignment]
 
 
 TAB_TITLES = [
@@ -37,6 +42,19 @@ DEMO_AUDIO_FILENAMES = (
     "case_1_dictated_intake.wav",
     "case_2_dictated_intake.wav",
     "case_3_dictated_intake.wav",
+)
+
+INTAKE_FIELD_KEYS = (
+    "setting",
+    "patient_age",
+    "pregnancy_status",
+    "chief_concern",
+    "symptoms",
+    "vitals",
+    "allergies",
+    "medications",
+    "available_supplies",
+    "responder_note",
 )
 
 
@@ -220,215 +238,89 @@ def build_app(config: FigmentConfig | None = None):
     if gr is None:
         return _FallbackDemo()
 
-    with gr.Blocks(title="Figment", css=FIGMENT_CSS, theme=gr.themes.Base(), fill_width=True) as demo:
-        gr.HTML(_app_header_html())
-        gr.HTML(_statusline_html(config))
-        intake_state = gr.State({})
-        audio_state = gr.State(None)
-        trace_state = gr.State({})
+    if not hasattr(gr, "Server"):
+        raise RuntimeError("Figment Server mode requires gradio>=6.0 so gradio.Server is available.")
 
-        with gr.Tabs(elem_classes=["figment-tabs"]):
-            with gr.Tab(TAB_TITLES[0]):
-                with gr.Column(elem_classes=["figment-tab-body"]):
-                    with gr.Row():
-                        with gr.Column(scale=11, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("1. Quick start", "Load a frozen synthetic demo case, or type directly into the confirmed intake form."))
-                            with gr.Row():
-                                demo_case = gr.Dropdown(list(DEMO_CASES), label="Demo case", scale=4)
-                                load_demo = gr.Button("Load", scale=1)
-                            gr.HTML(_demo_case_pills_html())
+    server = gr.Server(
+        title="Figment",
+        summary="Protocol navigator for field clinics and disaster response.",
+        version="1.0.0",
+    )
 
-                            gr.HTML(
-                                _section_header_html(
-                                    _audio_section_title(config),
-                                    _audio_section_subtitle(config),
-                                )
-                            )
-                            with gr.Row():
-                                with gr.Column(scale=3):
-                                    audio_clip = gr.Audio(
-                                        label=_audio_clip_label(config),
-                                        sources=["microphone", "upload"],
-                                        type="filepath",
-                                        interactive=config.enable_audio_intake,
-                                    )
-                                with gr.Column(scale=2):
-                                    draft_btn = gr.Button(
-                                        "Draft Audio Fields",
-                                        elem_classes=["primary"],
-                                        interactive=config.enable_audio_intake,
-                                    )
-                                    apply_audio = gr.Button("Apply Audio Draft", interactive=config.enable_audio_intake)
-                                    gr.HTML(_audio_runtime_chips_html(config))
-                            transcript = gr.Textbox(
-                                label=_transcript_label(config),
-                                lines=3,
-                                interactive=config.enable_audio_intake,
-                            )
-                            if examples := _demo_audio_examples():
-                                with gr.Accordion("Backup: upload/test audio clips", open=False):
-                                    gr.HTML(
-                                        '<div class="figment-section-subtitle">'
-                                        "Use these only for testing, browser microphone failures, or repeatable demo fallback."
-                                        "</div>"
-                                    )
-                                    gr.Examples(examples=examples, inputs=[audio_clip, transcript], label="Backup demo clips")
+    @server.api(name="runtime", concurrency_limit=None)
+    def runtime_api() -> dict[str, Any]:
+        return _runtime_payload(config)
 
-                            gr.HTML(_section_header_html("3. Confirmed intake", "Protocol rules and navigation run only after this intake is confirmed."))
-                            with gr.Row():
-                                setting = gr.Textbox(label="Setting")
-                                patient_age = gr.Textbox(label="Patient age")
-                                pregnancy_status = gr.Textbox(label="Pregnancy status")
-                            chief_concern = gr.Textbox(label="Chief concern")
-                            symptoms = gr.Textbox(label="Symptoms")
-                            vitals = gr.Textbox(label="Vitals")
-                            with gr.Row():
-                                allergies = gr.Textbox(label="Allergies")
-                                medications = gr.Textbox(label="Medications")
-                            supplies = gr.Textbox(label="Available supplies")
-                            note = gr.Textbox(label="Responder note", lines=4)
+    @server.api(name="load_demo_case", concurrency_limit=None)
+    def load_demo_case_api(name: str) -> dict[str, Any]:
+        fields = _fields_dict_from_values(_load_demo_case(name))
+        return {
+            "fields": fields,
+            "intake": collect_intake(*_field_values(fields)),
+            "risk": _empty_risk_result(),
+            "risk_html": _risk_summary_html(_empty_risk_result()),
+            "guidance_html": _protocol_results_html([]),
+            "navigator_html": _navigator_summary_html({}),
+            "trace_audit_html": _trace_audit_html({}),
+        }
 
-                        with gr.Column(scale=9, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Audio draft field suggestions", "Review timecoded suggestions before applying them to the editable intake."))
-                            audio_json = gr.JSON(label="Audio draft", elem_classes=["figment-json-compact"])
-                            gr.HTML(_section_header_html("Live confirmed intake preview", "This is the only source allowed to feed deterministic rules and navigation."))
-                            intake_json = gr.JSON(label="Confirmed intake", elem_classes=["figment-json-compact"])
-                            confirm_btn = gr.Button("Confirm Intake", elem_classes=["primary"])
+    @server.api(name="draft_audio", concurrency_limit=1)
+    def draft_audio_api(audio_file: FileData | None = None, transcript: str = "") -> dict[str, Any]:
+        path = _file_data_path(audio_file)
+        return draft_audio_intake(transcript=transcript or "", config=config, audio_file=path)
 
-            with gr.Tab(TAB_TITLES[1]):
-                with gr.Column(elem_classes=["figment-tab-body"]):
-                    with gr.Row():
-                        with gr.Column(scale=8, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Deterministic Red-Flag Checklist", "Reference checklist for the frozen safety floor. These rules are deterministic."))
-                            gr.HTML(_red_flag_checklist_html())
-                        with gr.Column(scale=10, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Rule Output", "The model cannot lower the deterministic protocol_urgency floor."))
-                            risk_btn = gr.Button("Run Risk Check", elem_classes=["primary"])
-                            risk_html = gr.HTML(_risk_summary_html(_empty_risk_result()))
-                            with gr.Accordion("Raw deterministic red flags JSON", open=False):
-                                risk_json = gr.JSON(label="Deterministic red flags", elem_classes=["figment-json-compact"])
+    @server.api(name="apply_audio_draft", concurrency_limit=None)
+    def apply_audio_draft_api(fields: dict[str, Any], audio_draft: dict[str, Any] | None = None) -> dict[str, Any]:
+        values = _field_values(fields)
+        updated = _apply_audio_draft_ui(*values, audio_draft)
+        updated_fields = _fields_dict_from_values(updated[: len(INTAKE_FIELD_KEYS)])
+        return {
+            "fields": updated_fields,
+            "audio_draft": updated[-1],
+            "intake": collect_intake(*_field_values(updated_fields)),
+            "risk": _empty_risk_result(),
+            "risk_html": _risk_summary_html(_empty_risk_result()),
+            "guidance_html": _protocol_results_html([]),
+            "navigator_html": _navigator_summary_html({}),
+            "trace_audit_html": _trace_audit_html({}),
+        }
 
-            with gr.Tab(TAB_TITLES[2]):
-                with gr.Column(elem_classes=["figment-tab-body"]):
-                    with gr.Row():
-                        with gr.Column(scale=8, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Protocol Card Browser", "Local protocol cards retrieved from the confirmed intake."))
-                            gr.HTML(_protocol_library_html())
-                            retrieve_btn = gr.Button("Retrieve Protocol Cards", elem_classes=["primary"])
-                        with gr.Column(scale=10, elem_classes=["figment-panel"]):
-                            guidance_html = gr.HTML(_protocol_results_html([]))
-                            guidance_evidence = gr.Textbox(label="Protocol evidence panel", lines=8, interactive=False)
-                            with gr.Accordion("Retrieved protocol cards JSON", open=False):
-                                guidance_json = gr.JSON(label="Retrieved protocol cards", elem_classes=["figment-json-compact"])
+    @server.api(name="confirm_intake", concurrency_limit=None)
+    def confirm_intake_api(fields: dict[str, Any], audio_draft: dict[str, Any] | None = None) -> dict[str, Any]:
+        confirmed, intake_state, updated_audio = _confirm_ui_intake(*_field_values(fields), audio_draft)
+        return {"intake": confirmed, "intake_state": intake_state, "audio_draft": updated_audio}
 
-            with gr.Tab(TAB_TITLES[3]):
-                with gr.Column(elem_classes=["figment-tab-body"]):
-                    with gr.Row():
-                        with gr.Column(scale=8, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Navigator Output JSON", "Machine-readable protocol navigation output."))
-                            nav_btn = gr.Button("Run Navigator", elem_classes=["primary"])
-                            output_json = gr.JSON(label="Navigator output", elem_classes=["figment-json-tall"])
-                        with gr.Column(scale=10, elem_classes=["figment-panel"]):
-                            navigator_html = gr.HTML(_navigator_summary_html({}))
-                            sbar_text = gr.Textbox(label="SBAR handoff", lines=8)
+    @server.api(name="risk_check", concurrency_limit=None)
+    def risk_check_api(intake: dict[str, Any]) -> dict[str, Any]:
+        risk, summary = _risk_ui_with_summary(intake)
+        return {"risk": risk, "risk_html": summary}
 
-            with gr.Tab(TAB_TITLES[4]):
-                with gr.Column(elem_classes=["figment-tab-body"]):
-                    with gr.Row():
-                        with gr.Column(scale=8, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Run Steps (Timeline)", "Audit trail from intake through validation."))
-                            trace_audit_html = gr.HTML(_trace_audit_html({}))
-                            export_trace = gr.Button("Export Trace")
-                            trace_file = gr.File(label="Trace download", interactive=False)
-                        with gr.Column(scale=10, elem_classes=["figment-panel"]):
-                            gr.HTML(_section_header_html("Trace JSON", "Raw audit object for review and export."))
-                            trace_json = gr.JSON(label="Trace", elem_classes=["figment-json-tall"])
+    @server.api(name="retrieve_protocol_cards", concurrency_limit=None)
+    def retrieve_protocol_cards_api(intake: dict[str, Any]) -> dict[str, Any]:
+        cards, evidence, summary = _retrieve_with_evidence_and_summary_ui(intake)
+        return {"cards": cards, "evidence": evidence, "guidance_html": summary}
 
-        gr.HTML(_footer_rail_html(config))
+    @server.api(name="run_navigator", concurrency_limit=1)
+    def run_navigator_api(intake: dict[str, Any], audio_draft: dict[str, Any] | None = None) -> dict[str, Any]:
+        output, sbar, trace, trace_state, summary, audit = _navigate_ui_with_summary(intake, audio_draft, config=config)
+        return {
+            "navigator_output": output,
+            "sbar": sbar,
+            "trace": trace,
+            "trace_state": trace_state,
+            "navigator_html": summary,
+            "trace_audit_html": audit,
+        }
 
-        fields = [setting, patient_age, pregnancy_status, chief_concern, symptoms, vitals, allergies, medications, supplies, note]
-        source_outputs = [
-            intake_json,
-            risk_json,
-            risk_html,
-            guidance_json,
-            guidance_evidence,
-            guidance_html,
-            output_json,
-            sbar_text,
-            navigator_html,
-            trace_json,
-            trace_file,
-            trace_audit_html,
-            intake_state,
-            trace_state,
-        ]
-        audio_source_outputs = [
-            audio_json,
-            intake_json,
-            risk_json,
-            risk_html,
-            guidance_json,
-            guidance_evidence,
-            guidance_html,
-            output_json,
-            sbar_text,
-            navigator_html,
-            trace_json,
-            trace_file,
-            trace_audit_html,
-            intake_state,
-            audio_state,
-            trace_state,
-        ]
-        load_demo.click(
-            _load_demo_case_and_reset,
-            inputs=[demo_case],
-            outputs=[
-                *fields,
-                audio_clip,
-                transcript,
-                audio_json,
-                intake_json,
-                risk_json,
-                risk_html,
-                guidance_json,
-                guidance_evidence,
-                guidance_html,
-                output_json,
-                sbar_text,
-                navigator_html,
-                trace_json,
-                trace_file,
-                trace_audit_html,
-                intake_state,
-                audio_state,
-                trace_state,
-            ],
-        )
-        draft_btn.click(
-            lambda audio_file, transcript_text: _draft_audio_ui(audio_file, transcript_text, config=config),
-            inputs=[audio_clip, transcript],
-            outputs=[audio_json],
-        ).then(lambda x: x, inputs=[audio_json], outputs=[audio_state]).then(_clear_source_outputs, outputs=source_outputs)
-        apply_audio.click(_apply_audio_draft_ui, inputs=[*fields, audio_state], outputs=[*fields, audio_json, audio_state]).then(
-            _clear_source_outputs,
-            outputs=source_outputs,
-        )
-        for source in fields:
-            source.change(_clear_source_outputs, outputs=source_outputs)
-        audio_clip.change(_clear_audio_outputs, outputs=audio_source_outputs)
-        transcript.change(_clear_audio_outputs, outputs=audio_source_outputs)
-        confirm_btn.click(_confirm_ui_intake, inputs=[*fields, audio_state], outputs=[intake_json, intake_state, audio_state])
-        risk_btn.click(_risk_ui_with_summary, inputs=[intake_state], outputs=[risk_json, risk_html])
-        retrieve_btn.click(_retrieve_with_evidence_and_summary_ui, inputs=[intake_state], outputs=[guidance_json, guidance_evidence, guidance_html])
-        nav_btn.click(
-            lambda intake, audio_draft: _navigate_ui_with_summary(intake, audio_draft, config=config),
-            inputs=[intake_state, audio_state],
-            outputs=[output_json, sbar_text, trace_json, trace_state, navigator_html, trace_audit_html],
-        )
-        export_trace.click(lambda trace: trace_download_path(trace, config=config) if trace else None, inputs=[trace_state], outputs=[trace_file])
-    return demo
+    @server.get("/", response_class=HTMLResponse)
+    async def homepage() -> str:
+        return _server_homepage_html(config)
+
+    @server.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "mode": "gradio.Server"}
+
+    return server
 
 
 def _h(value: Any) -> str:
@@ -484,6 +376,582 @@ def _footer_rail_html(config: FigmentConfig) -> str:
     """
 
 
+def _runtime_payload(config: FigmentConfig) -> dict[str, Any]:
+    return {
+        "model_mode_label": _model_mode_label(config),
+        "model_stack": config.model_stack,
+        "model_backend": config.model_backend,
+        "audio_backend": config.audio_backend,
+        "enable_audio_intake": config.enable_audio_intake,
+        "audio_section_title": _audio_section_title(config),
+        "audio_section_subtitle": _audio_section_subtitle(config),
+        "audio_clip_label": _audio_clip_label(config),
+        "transcript_label": _transcript_label(config),
+        "audio_chips_html": _audio_runtime_chips_html(config),
+        "demo_audio_examples": _demo_audio_examples(),
+        "status_text": _status_text(config),
+    }
+
+
+def _fields_dict_from_values(values: list[Any] | tuple[Any, ...]) -> dict[str, str]:
+    return {key: str(value or "") for key, value in zip(INTAKE_FIELD_KEYS, values, strict=True)}
+
+
+def _field_values(fields: dict[str, Any] | None) -> list[str]:
+    fields = fields or {}
+    return [str(fields.get(key, "") or "") for key in INTAKE_FIELD_KEYS]
+
+
+def _file_data_path(file_data: Any) -> str | None:
+    if not file_data:
+        return None
+    if isinstance(file_data, dict):
+        path = file_data.get("path")
+        return str(path) if path else None
+    path = getattr(file_data, "path", None)
+    return str(path) if path else None
+
+
+def _json_for_script(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=True).replace("</", "<\\/")
+
+
+def _server_homepage_html(config: FigmentConfig) -> str:
+    initial_data = {
+        "tabTitles": TAB_TITLES,
+        "fieldKeys": INTAKE_FIELD_KEYS,
+        "runtime": _runtime_payload(config),
+        "emptyRisk": _empty_risk_result(),
+        "riskHtml": _risk_summary_html(_empty_risk_result()),
+        "protocolLibraryHtml": _protocol_library_html(),
+        "guidanceHtml": _protocol_results_html([]),
+        "navigatorHtml": _navigator_summary_html({}),
+        "traceAuditHtml": _trace_audit_html({}),
+    }
+    html_doc = """
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Figment</title>
+    <style>
+__FIGMENT_CSS__
+    </style>
+  </head>
+  <body>
+    <main class="figment-app-shell">
+      <aside class="figment-mission-rail" aria-label="Mission context">
+      <header class="figment-topbar">
+        <div class="figment-brand">
+          <a class="figment-logo" href="/" aria-label="Homepage">Figment</a>
+          <div class="figment-positioning">Offline protocol support for field clinics and disaster response.</div>
+        </div>
+        <div class="figment-safety">
+          <span class="figment-safety-mark">!</span>
+          <span>For trained responders only. Not a substitute for clinical judgment.</span>
+        </div>
+      </header>
+
+      <section class="figment-statusline" aria-label="Runtime status">
+        <strong>Runtime</strong>
+        <span class="figment-chip blue" id="runtime-mode"></span>
+        <span class="figment-chip" id="runtime-stack"></span>
+        <span class="figment-chip" id="runtime-backend"></span>
+        <span class="figment-chip" id="runtime-audio"></span>
+        <span class="figment-chip green">Privacy: no raw audio retained in traces</span>
+      </section>
+
+      <nav class="figment-tabs" aria-label="Workflow">
+        <button class="figment-tab-button" type="button" data-view="intake">Intake</button>
+        <button class="figment-tab-button" type="button" data-view="risk">Risk Check</button>
+        <button class="figment-tab-button" type="button" data-view="protocol">Protocol Guidance</button>
+        <button class="figment-tab-button" type="button" data-view="navigator">Navigator Output + Handoff</button>
+        <button class="figment-tab-button" type="button" data-view="trace">Trace</button>
+      </nav>
+
+      <p class="figment-live-status" id="live-status" aria-live="polite">Server mode ready. Gradio queue endpoints are connected.</p>
+
+      <footer class="figment-footer-rail">
+        <div class="figment-footer-cluster">
+          <strong>Server mode</strong>
+          <span class="figment-chip blue">gradio.Server</span>
+          <span class="figment-chip">Custom HTML/CSS/JS frontend</span>
+          <span class="figment-chip">Gradio API queue retained</span>
+        </div>
+        <div class="figment-footer-cluster">
+          <strong>Harness</strong>
+          <span class="figment-chip green">v1.0.0 schema</span>
+          <span class="figment-chip green">Deterministic red-flag floor enabled</span>
+        </div>
+      </footer>
+      </aside>
+
+      <section class="figment-operation-board" aria-label="Case workspace">
+
+      <section class="figment-view" id="view-intake" data-view-panel="intake">
+        <div class="figment-workspace figment-workspace-intake">
+          <section class="figment-panel figment-intake-panel">
+            <div class="figment-panel-heading">
+              <div>
+                <span class="figment-kicker">Intake</span>
+                <h2>Case intake</h2>
+                <p>Responder-entered facts for the protocol run.</p>
+              </div>
+            </div>
+            <form id="intake-form" class="figment-field-grid">
+              <label class="figment-control" for="field-setting">
+                <span>Setting</span>
+                <input id="field-setting" name="setting" type="text">
+              </label>
+              <label class="figment-control" for="field-patient_age">
+                <span>Patient age</span>
+                <input id="field-patient_age" name="patient_age" type="text">
+              </label>
+              <label class="figment-control" for="field-pregnancy_status">
+                <span>Pregnancy status</span>
+                <input id="field-pregnancy_status" name="pregnancy_status" type="text">
+              </label>
+              <label class="figment-control figment-control-wide" for="field-chief_concern">
+                <span>Chief concern</span>
+                <input id="field-chief_concern" name="chief_concern" type="text">
+              </label>
+              <label class="figment-control figment-control-wide" for="field-symptoms">
+                <span>Symptoms</span>
+                <input id="field-symptoms" name="symptoms" type="text">
+              </label>
+              <label class="figment-control figment-control-wide" for="field-vitals">
+                <span>Vitals</span>
+                <input id="field-vitals" name="vitals" type="text">
+              </label>
+              <label class="figment-control" for="field-allergies">
+                <span>Allergies</span>
+                <input id="field-allergies" name="allergies" type="text">
+              </label>
+              <label class="figment-control" for="field-medications">
+                <span>Medications</span>
+                <input id="field-medications" name="medications" type="text">
+              </label>
+              <label class="figment-control figment-control-wide" for="field-available_supplies">
+                <span>Available supplies</span>
+                <input id="field-available_supplies" name="available_supplies" type="text">
+              </label>
+              <label class="figment-control figment-control-wide" for="field-responder_note">
+                <span>Responder note</span>
+                <textarea id="field-responder_note" name="responder_note" rows="4"></textarea>
+              </label>
+            </form>
+
+            <div class="figment-section-divider"></div>
+
+            <section class="figment-audio-draft" aria-labelledby="audio-title">
+              <div class="figment-panel-heading figment-panel-heading-action">
+                <div>
+                  <span class="figment-kicker">Audio draft</span>
+                  <h2 id="audio-title"></h2>
+                  <p id="audio-subtitle"></p>
+                </div>
+                <div id="audio-runtime-chips" class="figment-chip-row"></div>
+              </div>
+              <div class="figment-audio-grid">
+                <label class="figment-control" for="audio-file">
+                  <span id="audio-file-label"></span>
+                  <input id="audio-file" name="audio_file" type="file" accept="audio/*">
+                </label>
+                <div class="figment-audio-actions">
+                  <button class="figment-button figment-button-secondary" id="draft-audio" type="button">Draft audio fields</button>
+                  <button class="figment-button figment-button-secondary" id="apply-audio" type="button">Apply audio draft</button>
+                </div>
+              </div>
+              <label class="figment-control" for="transcript">
+                <span id="transcript-label"></span>
+                <textarea id="transcript" name="transcript" rows="3"></textarea>
+              </label>
+            </section>
+          </section>
+
+          <aside class="figment-panel figment-sticky-panel figment-review-panel">
+            <div class="figment-panel-heading figment-panel-heading-action figment-review-heading">
+              <div>
+                <span class="figment-kicker">Review</span>
+                <h2>Confirmed intake</h2>
+                <p>Protocol rules and navigation use this payload.</p>
+              </div>
+              <button class="figment-button figment-button-primary" id="confirm-intake" type="button">Confirm intake</button>
+            </div>
+            <pre class="figment-json" id="intake-json">{}</pre>
+            <div class="figment-section-divider"></div>
+            <div class="figment-panel-heading">
+              <div>
+                <span class="figment-kicker">Draft</span>
+                <h2>Audio suggestions</h2>
+                <p>Timecoded field suggestions before apply.</p>
+              </div>
+            </div>
+            <pre class="figment-json" id="audio-json">{}</pre>
+          </aside>
+        </div>
+      </section>
+
+      <section class="figment-view" id="view-risk" data-view-panel="risk" hidden>
+        <div class="figment-workspace">
+          <section class="figment-panel">
+            <div class="figment-panel-heading">
+              <div>
+                <h2>Deterministic red-flag checklist</h2>
+                <p>Reference checklist for the frozen safety floor. These rules are deterministic.</p>
+              </div>
+            </div>
+            __RED_FLAG_CHECKLIST__
+          </section>
+          <section class="figment-panel">
+            <div class="figment-panel-heading figment-panel-heading-action">
+              <div>
+                <h2>Rule output</h2>
+                <p>The model cannot lower the deterministic protocol_urgency floor.</p>
+              </div>
+              <button class="figment-button figment-button-primary" id="run-risk" type="button">Run risk check</button>
+            </div>
+            <div id="risk-html"></div>
+            <details class="figment-disclosure">
+              <summary>Raw deterministic red flags JSON</summary>
+              <pre class="figment-json" id="risk-json">{}</pre>
+            </details>
+          </section>
+        </div>
+      </section>
+
+      <section class="figment-view" id="view-protocol" data-view-panel="protocol" hidden>
+        <div class="figment-workspace">
+          <section class="figment-panel">
+            <div class="figment-panel-heading figment-panel-heading-action">
+              <div>
+                <h2>Protocol card browser</h2>
+                <p>Local protocol cards retrieved from the confirmed intake.</p>
+              </div>
+              <button class="figment-button figment-button-primary" id="retrieve-cards" type="button">Retrieve protocol cards</button>
+            </div>
+            <div id="protocol-library"></div>
+          </section>
+          <section class="figment-panel">
+            <div id="guidance-html"></div>
+            <div class="figment-section-divider"></div>
+            <label class="figment-control" for="guidance-evidence">
+              <span>Protocol evidence panel</span>
+              <textarea id="guidance-evidence" name="guidance_evidence" rows="8" readonly></textarea>
+            </label>
+            <details class="figment-disclosure">
+              <summary>Retrieved protocol cards JSON</summary>
+              <pre class="figment-json" id="guidance-json">[]</pre>
+            </details>
+          </section>
+        </div>
+      </section>
+
+      <section class="figment-view" id="view-navigator" data-view-panel="navigator" hidden>
+        <div class="figment-workspace">
+          <section class="figment-panel">
+            <div class="figment-panel-heading figment-panel-heading-action">
+              <div>
+                <h2>Navigator output JSON</h2>
+                <p>Machine-readable protocol navigation output.</p>
+              </div>
+              <button class="figment-button figment-button-primary" id="run-navigator" type="button">Run navigator</button>
+            </div>
+            <pre class="figment-json figment-json-tall" id="output-json">{}</pre>
+          </section>
+          <section class="figment-panel">
+            <div id="navigator-html"></div>
+            <label class="figment-control" for="sbar-text">
+              <span>SBAR handoff</span>
+              <textarea id="sbar-text" name="sbar_text" rows="8" readonly></textarea>
+            </label>
+          </section>
+        </div>
+      </section>
+
+      <section class="figment-view" id="view-trace" data-view-panel="trace" hidden>
+        <div class="figment-workspace">
+          <section class="figment-panel">
+            <div class="figment-panel-heading figment-panel-heading-action">
+              <div>
+                <h2>Run steps timeline</h2>
+                <p>Audit trail from intake through validation.</p>
+              </div>
+              <button class="figment-button figment-button-secondary" id="export-trace" type="button">Export trace</button>
+            </div>
+            <div id="trace-audit-html"></div>
+          </section>
+          <section class="figment-panel">
+            <div class="figment-panel-heading">
+              <div>
+                <h2>Trace JSON</h2>
+                <p>Raw audit object for review and export.</p>
+              </div>
+            </div>
+            <pre class="figment-json figment-json-tall" id="trace-json">{}</pre>
+          </section>
+        </div>
+      </section>
+
+      </section>
+    </main>
+
+    <script id="figment-data" type="application/json">__FIGMENT_DATA__</script>
+    <script type="module">
+      import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+      const initial = JSON.parse(document.getElementById("figment-data").textContent);
+      const fieldKeys = initial.fieldKeys;
+      const clientPromise = Client.connect(window.location.origin);
+      const state = {
+        fields: emptyFields(),
+        intake: {},
+        audioDraft: null,
+        risk: initial.emptyRisk,
+        cards: [],
+        evidence: "",
+        navigatorOutput: {},
+        sbar: "",
+        trace: {},
+        riskHtml: initial.riskHtml,
+        guidanceHtml: initial.guidanceHtml,
+        navigatorHtml: initial.navigatorHtml,
+        traceAuditHtml: initial.traceAuditHtml,
+      };
+
+      const $ = (selector) => document.querySelector(selector);
+      const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+      function emptyFields() {
+        return Object.fromEntries(initial.fieldKeys.map((key) => [key, ""]));
+      }
+
+      async function predict(name, args = []) {
+        const client = await clientPromise;
+        const result = await client.predict(`/${name}`, args);
+        return result.data[0];
+      }
+
+      function setLiveStatus(message) {
+        $("#live-status").textContent = message;
+      }
+
+      function setBusy(button, busy) {
+        if (!button) return;
+        button.disabled = busy;
+        button.classList.toggle("figment-button-loading", busy);
+      }
+
+      async function runAction(button, pendingMessage, doneMessage, action) {
+        try {
+          setBusy(button, true);
+          setLiveStatus(pendingMessage);
+          await action();
+          setLiveStatus(doneMessage);
+        } catch (error) {
+          console.error(error);
+          setLiveStatus(error?.message || "Action failed. Check the browser console.");
+        } finally {
+          setBusy(button, false);
+        }
+      }
+
+      function readFields() {
+        const fields = {};
+        for (const key of fieldKeys) {
+          fields[key] = $(`#field-${key}`).value;
+        }
+        return fields;
+      }
+
+      function writeFields(fields) {
+        for (const key of fieldKeys) {
+          const input = $(`#field-${key}`);
+          if (input) input.value = fields?.[key] || "";
+        }
+        state.fields = { ...emptyFields(), ...(fields || {}) };
+      }
+
+      function resetDownstream() {
+        state.intake = {};
+        state.risk = initial.emptyRisk;
+        state.cards = [];
+        state.evidence = "";
+        state.navigatorOutput = {};
+        state.sbar = "";
+        state.trace = {};
+        state.riskHtml = initial.riskHtml;
+        state.guidanceHtml = initial.guidanceHtml;
+        state.navigatorHtml = initial.navigatorHtml;
+        state.traceAuditHtml = initial.traceAuditHtml;
+      }
+
+      function renderJson(selector, value) {
+        $(selector).textContent = JSON.stringify(value ?? {}, null, 2);
+      }
+
+      function render() {
+        renderJson("#audio-json", state.audioDraft || {});
+        renderJson("#intake-json", state.intake || {});
+        renderJson("#risk-json", state.risk || {});
+        renderJson("#guidance-json", state.cards || []);
+        renderJson("#output-json", state.navigatorOutput || {});
+        renderJson("#trace-json", state.trace || {});
+        $("#risk-html").innerHTML = state.riskHtml || initial.riskHtml;
+        $("#guidance-html").innerHTML = state.guidanceHtml || initial.guidanceHtml;
+        $("#guidance-evidence").value = state.evidence || "";
+        $("#navigator-html").innerHTML = state.navigatorHtml || initial.navigatorHtml;
+        $("#sbar-text").value = state.sbar || "";
+        $("#trace-audit-html").innerHTML = state.traceAuditHtml || initial.traceAuditHtml;
+      }
+
+      function setView(name) {
+        for (const panel of $$("[data-view-panel]")) {
+          panel.hidden = panel.dataset.viewPanel !== name;
+        }
+        for (const button of $$(".figment-tab-button")) {
+          const active = button.dataset.view === name;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-current", active ? "page" : "false");
+        }
+      }
+
+      async function ensureConfirmed() {
+        if (state.intake?.confirmed) return;
+        const payload = await predict("confirm_intake", [readFields(), state.audioDraft]);
+        state.intake = payload.intake || {};
+        state.audioDraft = payload.audio_draft || state.audioDraft;
+        render();
+      }
+
+      async function draftAudio() {
+        const file = $("#audio-file").files[0];
+        const transcript = $("#transcript").value;
+        const args = file ? [handle_file(file), transcript] : [null, transcript];
+        state.audioDraft = await predict("draft_audio", args);
+        resetDownstream();
+        render();
+      }
+
+      async function applyAudioDraft() {
+        const payload = await predict("apply_audio_draft", [readFields(), state.audioDraft]);
+        writeFields(payload.fields || {});
+        state.audioDraft = payload.audio_draft || null;
+        resetDownstream();
+        state.risk = payload.risk || initial.emptyRisk;
+        state.riskHtml = payload.risk_html || initial.riskHtml;
+        state.guidanceHtml = payload.guidance_html || initial.guidanceHtml;
+        state.navigatorHtml = payload.navigator_html || initial.navigatorHtml;
+        state.traceAuditHtml = payload.trace_audit_html || initial.traceAuditHtml;
+        render();
+      }
+
+      async function confirmIntake() {
+        const payload = await predict("confirm_intake", [readFields(), state.audioDraft]);
+        state.intake = payload.intake || {};
+        state.audioDraft = payload.audio_draft || state.audioDraft;
+        render();
+      }
+
+      async function runRisk() {
+        await ensureConfirmed();
+        const payload = await predict("risk_check", [state.intake]);
+        state.risk = payload.risk || initial.emptyRisk;
+        state.riskHtml = payload.risk_html || initial.riskHtml;
+        render();
+      }
+
+      async function retrieveCards() {
+        await ensureConfirmed();
+        const payload = await predict("retrieve_protocol_cards", [state.intake]);
+        state.cards = payload.cards || [];
+        state.evidence = payload.evidence || "";
+        state.guidanceHtml = payload.guidance_html || initial.guidanceHtml;
+        render();
+      }
+
+      async function runNavigator() {
+        await ensureConfirmed();
+        const payload = await predict("run_navigator", [state.intake, state.audioDraft]);
+        state.navigatorOutput = payload.navigator_output || {};
+        state.sbar = payload.sbar || "";
+        state.trace = payload.trace || {};
+        state.navigatorHtml = payload.navigator_html || initial.navigatorHtml;
+        state.traceAuditHtml = payload.trace_audit_html || initial.traceAuditHtml;
+        render();
+      }
+
+      function exportTrace() {
+        if (!state.trace || Object.keys(state.trace).length === 0) {
+          setLiveStatus("Run the navigator before exporting a trace.");
+          return;
+        }
+        const blob = new Blob([JSON.stringify(state.trace, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "figment-trace.json";
+        link.click();
+        URL.revokeObjectURL(url);
+        setLiveStatus("Trace export prepared in the browser.");
+      }
+
+      function initialize() {
+        const runtime = initial.runtime;
+        $("#runtime-mode").textContent = runtime.model_mode_label;
+        $("#runtime-stack").textContent = `MODEL_STACK=${runtime.model_stack}`;
+        $("#runtime-backend").textContent = `MODEL_BACKEND=${runtime.model_backend}`;
+        $("#runtime-audio").textContent = `ENABLE_AUDIO_INTAKE=${runtime.enable_audio_intake ? "ON" : "OFF"}`;
+        $("#runtime-audio").classList.add(runtime.enable_audio_intake ? "green" : "amber");
+        $("#audio-title").textContent = runtime.audio_section_title;
+        $("#audio-subtitle").textContent = runtime.audio_section_subtitle;
+        $("#audio-file-label").textContent = runtime.audio_clip_label;
+        $("#transcript-label").textContent = runtime.transcript_label;
+        $("#audio-runtime-chips").innerHTML = runtime.audio_chips_html;
+        $("#protocol-library").innerHTML = initial.protocolLibraryHtml;
+
+        for (const button of $$(".figment-tab-button")) {
+          button.addEventListener("click", () => setView(button.dataset.view));
+        }
+        for (const input of $$("#intake-form input, #intake-form textarea")) {
+          input.addEventListener("input", () => {
+            state.fields = readFields();
+            resetDownstream();
+            render();
+          });
+        }
+
+        $("#draft-audio").addEventListener("click", () => runAction($("#draft-audio"), "Drafting audio fields through Gradio Server.", "Audio draft updated.", draftAudio));
+        $("#apply-audio").addEventListener("click", () => runAction($("#apply-audio"), "Applying audio draft.", "Audio draft applied to editable intake.", applyAudioDraft));
+        $("#confirm-intake").addEventListener("click", () => runAction($("#confirm-intake"), "Confirming intake.", "Confirmed intake is ready for rules and navigation.", confirmIntake));
+        $("#run-risk").addEventListener("click", () => runAction($("#run-risk"), "Running deterministic red-flag checks.", "Risk check complete.", runRisk));
+        $("#retrieve-cards").addEventListener("click", () => runAction($("#retrieve-cards"), "Retrieving local protocol cards.", "Protocol cards retrieved.", retrieveCards));
+        $("#run-navigator").addEventListener("click", () => runAction($("#run-navigator"), "Running navigator through Gradio Server.", "Navigator output and trace complete.", runNavigator));
+        $("#export-trace").addEventListener("click", exportTrace);
+
+        const audioEnabled = Boolean(runtime.enable_audio_intake);
+        $("#audio-file").disabled = !audioEnabled;
+        $("#transcript").disabled = !audioEnabled;
+        $("#draft-audio").disabled = !audioEnabled;
+        $("#apply-audio").disabled = !audioEnabled;
+
+        setView("intake");
+        render();
+      }
+
+      initialize();
+    </script>
+  </body>
+</html>
+"""
+    return (
+        html_doc.replace("__FIGMENT_CSS__", FIGMENT_CSS)
+        .replace("__FIGMENT_DATA__", _json_for_script(initial_data))
+        .replace("__RED_FLAG_CHECKLIST__", _red_flag_checklist_html())
+    )
+
+
 def _model_mode_label(config: FigmentConfig) -> str:
     if config.model_backend == "hosted_omni":
         return "Configured backend: hosted_omni"
@@ -494,14 +962,14 @@ def _model_mode_label(config: FigmentConfig) -> str:
 
 def _audio_section_title(config: FigmentConfig) -> str:
     if not config.enable_audio_intake or config.audio_backend == "none":
-        return "2. Audio draft intake disabled"
+        return "Audio draft intake disabled"
     if config.audio_backend == "omni_native" and config.model_backend == "hosted_omni":
-        return "2. Hosted Omni audio draft"
+        return "Hosted Omni audio draft"
     if config.audio_backend == "parakeet_nemo":
-        return "2. Local Parakeet ASR draft"
+        return "Local Parakeet ASR draft"
     if config.audio_backend == "canned":
-        return "2. Canned audio demo draft"
-    return "2. Audio draft intake"
+        return "Canned audio demo draft"
+    return "Audio draft intake"
 
 
 def _audio_section_subtitle(config: FigmentConfig) -> str:
@@ -554,11 +1022,6 @@ def _audio_runtime_chips_html(config: FigmentConfig) -> str:
 def _section_header_html(title: str, subtitle: str = "") -> str:
     subtitle_html = f'<div class="figment-section-subtitle">{_h(subtitle)}</div>' if subtitle else ""
     return f'<div class="figment-section-title">{_h(title)}</div>{subtitle_html}'
-
-
-def _demo_case_pills_html() -> str:
-    pills = "".join(f'<div class="figment-demo-pill">{_h(name)}</div>' for name in DEMO_CASES)
-    return f'<div class="figment-quick-grid">{pills}</div>'
 
 
 def _red_flag_checklist_html() -> str:
@@ -802,6 +1265,7 @@ def _navigator_summary_html(output: dict[str, Any], trace: dict[str, Any] | None
         urgency = "routine"
     handoff = output.get("handoff_note_sbar") if isinstance(output.get("handoff_note_sbar"), dict) else {}
     runtime_card = _runtime_contribution_card_html(trace)
+    evidence_card = _harness_evidence_card_html(output, trace)
     return f"""
     <div class="figment-urgency-banner">
       <div>
@@ -815,6 +1279,8 @@ def _navigator_summary_html(output: dict[str, Any], trace: dict[str, Any] | None
     </div>
     <div style="height:12px"></div>
     {runtime_card}
+    <div style="height:12px"></div>
+    {evidence_card}
     <div style="height:12px"></div>
     <div class="figment-card-grid">
       {_navigator_list_card_html("Missing Observations", output.get("missing_info_to_collect"))}
@@ -863,6 +1329,42 @@ def _runtime_contribution_card_html(trace: dict[str, Any] | None) -> str:
       <div class="figment-section-subtitle">fallback_reason={_h(fallback_reason)}</div>
     </div>
     """
+
+
+def _harness_evidence_card_html(output: dict[str, Any] | None, trace: dict[str, Any] | None = None) -> str:
+    evidence = _harness_evidence_from(output, trace)
+    if not evidence:
+        return ""
+    retrieved_count = len(_as_list(evidence.get("retrieved_card_ids")))
+    rule_count = len(_as_list(evidence.get("deterministic_rule_ids")))
+    source_count = len(_as_list(evidence.get("source_card_ids")))
+    final_route = str(evidence.get("final_route") or "unknown")
+    return f"""
+    <div class="figment-mini-card">
+      <h4>Harness Evidence</h4>
+      <span class="figment-chip green">Intake confirmed: {_h(evidence.get('confirmed_intake'))}</span>
+      <span class="figment-chip green">Validation: {_h(evidence.get('validator_status'))}</span>
+      <span class="figment-chip">Retrieved cards: {_h(retrieved_count)}</span>
+      <span class="figment-chip">Rule results: {_h(rule_count)}</span>
+      <span class="figment-chip">Source cards: {_h(source_count)}</span>
+      <span class="figment-chip">Urgency floor: {_h(evidence.get('urgency_floor'))}</span>
+      <span class="figment-chip {_route_chip_class(final_route)}">Route: {_h(runtime_route_label(final_route))}</span>
+      <span class="figment-chip">Audio correction: {_h(evidence.get('audio_correction_status'))}</span>
+    </div>
+    """
+
+
+def _harness_evidence_from(output: dict[str, Any] | None, trace: dict[str, Any] | None = None) -> dict[str, Any]:
+    if isinstance(output, dict) and isinstance(output.get("harness_evidence"), dict):
+        return output["harness_evidence"]
+    if isinstance(trace, dict):
+        normalized = normalize_trace_payload(trace)
+        if isinstance(normalized.get("harness_evidence"), dict):
+            return normalized["harness_evidence"]
+        navigator_output = normalized.get("navigator_output")
+        if isinstance(navigator_output, dict) and isinstance(navigator_output.get("harness_evidence"), dict):
+            return navigator_output["harness_evidence"]
+    return {}
 
 
 def _navigator_list_card_html(title: str, values: Any, *, checked: bool = False) -> str:
@@ -933,6 +1435,7 @@ def _trace_audit_html(trace: dict[str, Any]) -> str:
     route = trace.get("model_route") if isinstance(trace.get("model_route"), dict) else {}
     retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
     provenance_summary = trace.get("field_provenance_summary") if isinstance(trace.get("field_provenance_summary"), dict) else {}
+    evidence = _harness_evidence_from(None, trace)
     final_route = str(route.get("final_route") or "unknown")
     return f"""
     <table class="figment-table">
@@ -947,7 +1450,9 @@ def _trace_audit_html(trace: dict[str, Any]) -> str:
         <span class="figment-chip green">Schema valid: {_h(validator.get('passed'))}</span>
         <span class="figment-chip {_route_chip_class(final_route)}">{_h(runtime_route_label(route))}</span>
         <span class="figment-chip">Retrieval: {_h(retrieval.get('primary_source') or 'not traced')}</span>
+        <span class="figment-chip">Harness evidence: {_h('visible' if evidence else 'not traced')}</span>
       </div>
+      {_harness_evidence_card_html(None, trace)}
       <div class="figment-mini-card">
         <h4>Model &amp; Performance</h4>
         <table class="figment-table">
@@ -1274,4 +1779,4 @@ def _navigate_ui(
 
 
 if __name__ == "__main__":
-    build_app().queue().launch()
+    build_app().launch()

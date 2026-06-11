@@ -4,7 +4,7 @@ emoji: 📉
 colorFrom: indigo
 colorTo: red
 sdk: gradio
-sdk_version: 5.50.0
+sdk_version: 6.17.3
 app_file: app.py
 pinned: false
 python_version: 3.11
@@ -37,7 +37,7 @@ The design goal is restraint. Figment is **a field protocol binder that can talk
 
 ## What it does
 
-Figment is a [Gradio](https://www.gradio.app/) app with five frozen tabs:
+Figment is a [Gradio Server](https://www.gradio.app/guides/server-mode) app with five frozen workflow views:
 
 1. **Intake** — structured capture of setting, patient age, pregnancy status, chief concern, symptoms, vitals, allergies, medications, available supplies, and a free-text responder note. Optional audio intake drafts fields only; typed/edited values must be confirmed before rules or navigation run.
 2. **Risk Check** — deterministic red-flag rules fire **before** the LLM and set the minimum urgency floor (e.g. altered mental status, severe respiratory distress, chest pain, stroke signs, pregnancy bleeding, pediatric lethargy, severe dehydration signs, fever escalation criteria, wound infection escalation criteria).
@@ -50,7 +50,7 @@ Figment is a [Gradio](https://www.gradio.app/) app with five frozen tabs:
 ## How it works
 
 ```text
-Gradio Blocks UI
+Gradio Server custom frontend + Gradio API endpoints
   → structured intake schema
   → rules.py        (deterministic red-flag engine)
   → retrieval.py    (SQLite FTS protocol search)
@@ -189,7 +189,7 @@ This repo now holds the runnable scaffold plus the planning docs. Current struct
 
 ```text
 figment/
-  app.py                # Gradio Blocks UI
+  app.py                # Gradio Server app and custom frontend
   figment/              # config, schemas, rules, retrieval, model_client,
                         #   prompt_builder, validators, trace, sbar
   data/
