@@ -22,6 +22,7 @@ from figment.config import FigmentConfig  # noqa: E402
 from figment.eval_metrics import score_expected_labels, score_handoff_readiness, summarize_eval_records  # noqa: E402
 from figment.field_provenance import (  # noqa: E402
     DETERMINISTIC_FALLBACK,
+    MODEL_REPAIRED,
     accepted_raw_fields_from_failures,
     deterministic_field_provenance,
     has_deterministic_patches,
@@ -121,6 +122,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
     competence_repair_scope: str | None = None
     competence_repaired_output: dict[str, Any] | None = None
     competence_repair_validation = {"passed": False, "failures": ["competence repair not attempted"]}
+    scaffolded_model_output: dict[str, Any] | None = None
     handoff_readiness_before: dict[str, Any] | None = None
     handoff_readiness_after: dict[str, Any] | None = None
     final_output: dict[str, Any]
@@ -172,7 +174,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                 urgency_floor=floor,
                 confirmed_intake=intake,
             )
-            raw_output = scaffold_result.output
+            scaffolded_model_output = scaffold_result.output
             _absorb_scaffold_trace(
                 scaffold_result,
                 scaffold_patched_fields=scaffold_patched_fields,
@@ -181,18 +183,57 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                 invalid_selected_required_observation_ids=invalid_selected_required_observation_ids,
                 stripped_trace_only_fields=stripped_trace_only_fields,
             )
-            raw_validation = _validate_output(raw_output, known_cards, floor, intake, rule_results, retrieved, retrieved_ids)
+            raw_validation = _validate_output(
+                scaffolded_model_output,
+                known_cards,
+                floor,
+                intake,
+                rule_results,
+                retrieved,
+                retrieved_ids,
+            )
         except ModelClientError as exc:
             raw_validation = {"passed": False, "failures": [f"model backend error: {exc}"]}
             fallback_reason = "model_backend_error"
 
-        if raw_output is not None and raw_validation["passed"]:
-            final_output = raw_output
+        if scaffolded_model_output is not None and raw_validation["passed"]:
+            final_output = scaffolded_model_output
             final_validation = raw_validation
             field_provenance = model_raw_field_provenance()
             _mark_deterministic_patch_fields(field_provenance, scaffold_patched_fields)
+            patch_repair_failures = _observation_patch_repair_failures(
+                filled_required_observation_ids,
+                scaffold_patched_fields,
+            )
+            if patch_repair_failures and raw_output is not None:
+                (
+                    repaired_output,
+                    repair_validation,
+                    repair_attempted,
+                    merged_output,
+                    merged_validation,
+                    merged_field_provenance,
+                ) = _try_field_level_model_output(
+                    client=client,
+                    prompt=prompt,
+                    context=context,
+                    raw_output=raw_output,
+                    validation_failures=patch_repair_failures,
+                    fallback_output=scaffolded_model_output,
+                    known_cards=known_cards,
+                    floor=floor,
+                    intake=intake,
+                    rule_results=rule_results,
+                    retrieved=retrieved,
+                    retrieved_ids=retrieved_ids,
+                    scaffold_patched_fields=scaffold_patched_fields,
+                )
+                if merged_output is not None and merged_validation is not None:
+                    final_output = merged_output
+                    final_validation = merged_validation
+                    field_provenance = merged_field_provenance
         else:
-            if raw_output is not None:
+            if scaffolded_model_output is not None:
                 fallback_output, fallback_validation, fallback_scaffold = _run_fallback(
                     intake,
                     rule_results,
@@ -212,7 +253,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
                     client=client,
                     prompt=prompt,
                     context=context,
-                    raw_output=raw_output,
+                    raw_output=scaffolded_model_output,
                     validation_failures=raw_validation["failures"],
                     fallback_output=fallback_output,
                     known_cards=known_cards,
@@ -446,6 +487,7 @@ def _evaluate_case(case: dict[str, Any], config: FigmentConfig) -> dict[str, Any
         "final_validation": final_validation,
         "harness_evidence": harness_evidence,
         "raw_model_output": raw_output,
+        "scaffolded_model_output": scaffolded_model_output,
         "repaired_output": repaired_output,
         "competence_repaired_output": competence_repaired_output,
         "fallback_output": fallback_output,
@@ -499,6 +541,22 @@ def _extend_unique(items: list[str], values: list[str]) -> None:
     for value in values:
         if value not in items:
             items.append(value)
+
+
+def _merge_observation_repair_values(previous_value: Any, repair_value: Any) -> list[str]:
+    merged: list[str] = []
+    for value in _coerce_text_list(previous_value) + _coerce_text_list(repair_value):
+        if value not in merged:
+            merged.append(value)
+    return merged
+
+
+def _coerce_text_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def _validate_output(
@@ -577,7 +635,13 @@ def _try_field_level_model_output(
             continue
         for field in focused_prompt.scope.fields:
             if field in repair_output:
-                repaired_fields[field] = repair_output[field]
+                if focused_prompt.scope.name == "missing_observations":
+                    repaired_fields[field] = _merge_observation_repair_values(
+                        raw_output.get(field),
+                        repair_output[field],
+                    )
+                else:
+                    repaired_fields[field] = repair_output[field]
 
     merge_candidates = []
     if repaired_fields:
@@ -620,8 +684,25 @@ def _try_field_level_model_output(
 
 def _mark_deterministic_patch_fields(provenance: dict[str, str], fields: set[str]) -> None:
     for field in fields:
-        if field in provenance:
+        if field in provenance and provenance[field] != MODEL_REPAIRED:
             provenance[field] = DETERMINISTIC_FALLBACK
+
+
+def _observation_patch_repair_failures(
+    filled_required_observation_ids: list[str],
+    scaffold_patched_fields: set[str],
+) -> list[str]:
+    if not {"missing_info_to_collect", "next_observations_to_collect"} & scaffold_patched_fields:
+        return []
+    card_ids: list[str] = []
+    for target_id in filled_required_observation_ids:
+        card_id, separator, _index = str(target_id).partition("::required_observation::")
+        if separator and card_id and card_id not in card_ids:
+            card_ids.append(card_id)
+    return [
+        f"missing_info_to_collect does not reference required observations for {card_id}"
+        for card_id in card_ids
+    ]
 
 
 def _handoff_competence_failures(metrics: dict[str, Any]) -> list[str]:

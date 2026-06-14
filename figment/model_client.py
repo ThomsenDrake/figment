@@ -51,9 +51,17 @@ def canned_navigator_output(
 ) -> dict[str, Any]:
     """Return a deterministic demo-safe navigator output."""
     cards = [item.get("card", item) for item in retrieved_cards]
-    source_cards = [str(card.get("card_id")) for card in cards if card.get("card_id")]
+    retrieved_ids = [str(card.get("card_id")) for card in cards if card.get("card_id")]
+    source_cards: list[str] = []
+    for rule in rule_results:
+        card_id = str(rule.get("card_id", "")).strip()
+        if card_id and card_id not in source_cards:
+            source_cards.append(card_id)
+    for card_id in ("SAFETY-BOUNDARIES-v1", "REFERRAL-SBAR-v1"):
+        if card_id in retrieved_ids and card_id not in source_cards:
+            source_cards.append(card_id)
     if not source_cards:
-        source_cards = ["SAFETY-BOUNDARIES-v1"]
+        source_cards = [card_id for card_id in retrieved_ids if card_id] or ["SAFETY-BOUNDARIES-v1"]
 
     concern = intake.get("chief_concern") or intake.get("responder_note") or "Reported field concern"
     red_labels = [rule.get("label", rule.get("rule_id", "")) for rule in rule_results]
@@ -70,7 +78,8 @@ def canned_navigator_output(
                 "card_id": card_id,
                 "reason_relevant": "Retrieved from the confirmed intake and deterministic rule context.",
             }
-            for card_id in source_cards[:3]
+            for card_id in source_cards
+            if card_id not in {"SAFETY-BOUNDARIES-v1", "REFERRAL-SBAR-v1"}
         ],
         "missing_info_to_collect": ["repeat vitals", "time course", "available referral route"],
         "next_observations_to_collect": ["level of alertness", "work of breathing", "hydration/perfusion signs"],

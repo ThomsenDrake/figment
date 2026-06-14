@@ -10,13 +10,16 @@ def test_current_repo_report_keeps_remaining_external_gates_incomplete() -> None
     assert report["status"] == "incomplete"
     assert report["ready_for_badge_claims"] is False
     assert report["gates"]["claim_audit"]["passed"] is True
-    assert report["gates"]["local_4b_50_case_eval"]["passed"] is True
-    assert report["gates"]["no_cloud_route"]["passed"] is True
-    assert report["gates"]["llama_champion_route"]["passed"] is True
+    assert report["gates"]["local_4b_50_case_eval"]["passed"] is False
+    assert report["gates"]["no_cloud_route"]["passed"] is False
+    assert report["gates"]["llama_champion_route"]["passed"] is False
     assert report["gates"]["local_asr_provider_proof"]["passed"] is False
     assert report["gates"]["trained_responder_user_test"]["passed"] is False
-    assert "local_4b_50_case_eval" not in report["missing_gate_keys"]
+    assert "local_4b_50_case_eval" in report["missing_gate_keys"]
+    assert "no_cloud_route" in report["missing_gate_keys"]
+    assert "llama_champion_route" in report["missing_gate_keys"]
     assert "local_asr_provider_proof" in report["missing_gate_keys"]
+    assert "local full-weight endpoint" in report["gates"]["local_4b_50_case_eval"]["next_action"]
     assert "real local Parakeet provider payload" in report["gates"]["local_asr_provider_proof"]["next_action"]
 
 

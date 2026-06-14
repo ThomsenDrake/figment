@@ -1,0 +1,1117 @@
+{
+  "changed_case_count": 6,
+  "changed_cases": [
+    {
+      "case_id": "field_workflow_holdout_v1-000019",
+      "changes": {
+        "expected_missing_observations": {
+          "after": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report"
+          ],
+          "before": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [
+            "PREG-001",
+            "FEVER-001"
+          ],
+          "before": [
+            "PREG-001",
+            "red_flag_chest_pain",
+            "FEVER-001"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1"
+          ],
+          "before": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1",
+            "CHEST-PAIN-ESCALATION-v1"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000050",
+      "changes": {
+        "expected_min_protocol_urgency": {
+          "after": "routine",
+          "before": "emergency"
+        },
+        "expected_missing_observations": {
+          "after": [
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs"
+          ],
+          "before": [
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder",
+            "available vital signs"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [],
+          "before": [
+            "red_flag_chest_pain"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1"
+          ],
+          "before": [
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "CHEST-PAIN-ESCALATION-v1"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000067",
+      "changes": {
+        "expected_missing_observations": {
+          "after": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report"
+          ],
+          "before": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [
+            "PREG-001",
+            "FEVER-001"
+          ],
+          "before": [
+            "PREG-001",
+            "red_flag_chest_pain",
+            "FEVER-001"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1"
+          ],
+          "before": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1",
+            "CHEST-PAIN-ESCALATION-v1"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000091",
+      "changes": {
+        "expected_missing_observations": {
+          "after": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report"
+          ],
+          "before": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [
+            "PREG-001",
+            "FEVER-001"
+          ],
+          "before": [
+            "PREG-001",
+            "red_flag_chest_pain",
+            "FEVER-001"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1"
+          ],
+          "before": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1",
+            "CHEST-PAIN-ESCALATION-v1"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000099",
+      "changes": {
+        "expected_missing_observations": {
+          "after": [
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "available vital signs",
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations"
+          ],
+          "before": [
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder",
+            "available vital signs",
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [
+            "PREG-001",
+            "FEVER-001"
+          ],
+          "before": [
+            "PREG-001",
+            "red_flag_chest_pain",
+            "FEVER-001"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "REFERRAL-SBAR-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "FEVER-RED-FLAGS-v1"
+          ],
+          "before": [
+            "REFERRAL-SBAR-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "CHEST-PAIN-ESCALATION-v1",
+            "FEVER-RED-FLAGS-v1"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000115",
+      "changes": {
+        "expected_missing_observations": {
+          "after": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report"
+          ],
+          "before": [
+            "temperature if available",
+            "age or pregnancy status",
+            "mental status",
+            "neck stiffness report",
+            "rash report",
+            "hydration observations",
+            "available vital signs",
+            "confirmed intake status",
+            "deterministic rule results",
+            "retrieved protocol card IDs",
+            "navigator validation result",
+            "manual correction status for audio-derived fields",
+            "situation or reason for handoff",
+            "relevant background and timeline",
+            "objective observations only",
+            "red flags already fired",
+            "specific request or receiving pathway",
+            "source protocol card IDs",
+            "pregnancy or postpartum status",
+            "bleeding report",
+            "abdominal pain report",
+            "headache or vision symptoms",
+            "seizure or fainting report",
+            "fever report",
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder"
+          ]
+        },
+        "expected_red_flag_rule_ids": {
+          "after": [
+            "PREG-001",
+            "FEVER-001"
+          ],
+          "before": [
+            "PREG-001",
+            "red_flag_chest_pain",
+            "FEVER-001"
+          ]
+        },
+        "expected_source_card_ids": {
+          "after": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1"
+          ],
+          "before": [
+            "FEVER-RED-FLAGS-v1",
+            "SAFETY-BOUNDARIES-v1",
+            "REFERRAL-SBAR-v1",
+            "PREG-DANGER-SIGNS-v1",
+            "CHEST-PAIN-ESCALATION-v1"
+          ]
+        }
+      }
+    }
+  ],
+  "dataset_version": "field_workflow_holdout_v1_corrected_scoring",
+  "derived_from_dataset_version": "field_workflow_holdout_v1",
+  "generated_at": "2026-06-12T21:53:41.462695+00:00",
+  "output_path": "data/eval/field_workflow_holdout_v1_corrected_scoring.jsonl",
+  "output_sha256": "c1115a32cf85f19fb446e037a62a10bb33f649d4b2b87a00a5379d55ae24782e",
+  "policy": {
+    "preserve_case_ids": true,
+    "preserve_frozen_holdout_file": true,
+    "recompute_expected_labels_with_current_rules": true
+  },
+  "row_count": 150,
+  "row_hashes": [
+    {
+      "case_id": "field_workflow_holdout_v1-000000",
+      "sha256": "sha256:b523f686fe7a990545f1b898ae7cfc64b5ba93710a9c8f18f7af8f63119d8194"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000001",
+      "sha256": "sha256:f1ffa233e891324d9590f3bf4795cb0364cae62abe591c04078fff955f51a262"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000002",
+      "sha256": "sha256:64d335b68060349433a926484ec39f93bb5eb98961d0d262f7eb517951f905cf"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000003",
+      "sha256": "sha256:41d266fa381d6a1a080be2ca2e0f509cf0296a2faadc1348ee31624c4ece68aa"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000004",
+      "sha256": "sha256:9afed3c660b56908575057f0b47ff59c2e79d40c8a64bc0cfc188c49d8c59799"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000005",
+      "sha256": "sha256:ea10f38f2ce20376acb16693e6c3b4c9545afa136537c0b6bf4beadf69237afa"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000006",
+      "sha256": "sha256:b6673de2bca31ef5876da374313cafc10909ea6c295143aee98ec5d46971bb0d"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000007",
+      "sha256": "sha256:5926d69bfcce4b4f1bb0e473454253e381ed8976cc357fef090f6f9ccc74dffe"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000008",
+      "sha256": "sha256:aeca2d50f4c064a63a4881edf2c550dff8a0c72500cc8b22d9c100e5fac1dcdf"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000009",
+      "sha256": "sha256:a10e49049fde7e48d17bd59f8a5a563c8a8e8a141945d1e0bc297152a6bcdc90"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000010",
+      "sha256": "sha256:63cfafe761548e70850bfe7982ec96e2d1f41716ae5c19b858c4b8a5a26f4df5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000011",
+      "sha256": "sha256:7470038c1eba7eebadb50dcd2be2516325033f09f400f4774230f9cc2d79e4a9"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000012",
+      "sha256": "sha256:47c593492f91709f052b4d939ac10e4b6351cbbfe0ac6477e8c7ba2b40ea84ca"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000013",
+      "sha256": "sha256:e830c436dfb88962078b278b35b4d9ca9e49d9d6b0e3e3c74ef8ab66d064e8af"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000014",
+      "sha256": "sha256:e1bf283f91612f2b7711ba6106cbff326811fb4ffbef920ebff8ea6fe2ed74a2"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000015",
+      "sha256": "sha256:9f4fbba186e2ab20a8c51e4aaebf724b84aa539888a289dad5ca9fb272cb4c7c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000016",
+      "sha256": "sha256:a226740ec8e2bc8afd2d1703eafff4c794eb144df99d9047db9beb51d190d13c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000017",
+      "sha256": "sha256:4c56deb575cd15ffccef6ab1dea0816c8b6fe519f37bd86c3092dcd4bfe77531"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000018",
+      "sha256": "sha256:1e2bbaefe7f677b9a95144dd90b0f5fba4c2d5a49d80a55be32ed038a5f203e5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000019",
+      "sha256": "sha256:f20f362f9e7d3b02e84dc122ee1492f14e0c4d53b86ef8800fdee192b8e4ee63"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000020",
+      "sha256": "sha256:41c7cc8d2048010630305a9ca592e0ac39e419db29f903f2bc9debb5abd27fec"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000021",
+      "sha256": "sha256:e1edb67a260ba9a0e3c40a959b332e145daa7a95396942410b0aab00e9fd6398"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000022",
+      "sha256": "sha256:a99f8c8fdb162b05381e48ea48caa23d1073f87d590d7fad41a77b31d2b69864"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000023",
+      "sha256": "sha256:f0b56b9d2005d79a6e6bd85445be3f97c22883fb88f84a9aaebd064db4e65c42"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000024",
+      "sha256": "sha256:46a89b5ab600251cbce1564a6d96c539692a0925a65e93be6a966471d62ad359"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000025",
+      "sha256": "sha256:3e2643b3831ff12c0e3c7e5e853b0b3120928eb3752e64ef3dfb6cf4a3d7a5fa"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000026",
+      "sha256": "sha256:7c9c4dcac0c81074b40df927163d26b2626aa4b06a91db1d1511851eaf6b5f66"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000027",
+      "sha256": "sha256:a4331633305a47a31883a0d15f4934f68d1a2ac259b7e1a39f7f72effca42067"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000028",
+      "sha256": "sha256:0d43bbd590660fe7a246d6d7bcf52e940a91a102af78b6c03c4d7eb173d238de"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000029",
+      "sha256": "sha256:c796bf3fe85d4810235447bdaafbe575f6745918a6b2b087c4d1cb27c3642948"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000030",
+      "sha256": "sha256:f828c2279938bda39b2a26edfc9e0f19bd3da35bdd806e9ea74811ca7f7a116a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000031",
+      "sha256": "sha256:70170d5679b7256bd760e7841ab98d4bd45e495e6681b0acc7778c7f39012b75"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000032",
+      "sha256": "sha256:a6fed05b1a4c411a321cd78f09d5d854d8fc30269cbbbc5649cd1b9268cf02ee"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000033",
+      "sha256": "sha256:d2ffee370489ee960f06ed4968ce342aa01e23e43b944d6e725430bc1bdd2f4e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000034",
+      "sha256": "sha256:fd36f66ab06be4ebbc90d5f5c81d3eab9a76acf54d8566e26d78c85dd0cac1b5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000035",
+      "sha256": "sha256:28e349af37dac4283b751aa5c8e3ed12f00df21627bee3204bf20086d7a01ab7"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000036",
+      "sha256": "sha256:6e36deb5336beda564e45ce709202f4e2cffe4094b447411b47a801e3b1ee9d1"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000037",
+      "sha256": "sha256:8cbe78cdf162cb2b86fe150df0d8e8e26b6415c6447739a4d530ceb1c1836576"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000038",
+      "sha256": "sha256:25230b1b4ad8f376669b7d7053cc1289f781f9247cb75c51796610f524184afa"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000039",
+      "sha256": "sha256:2c21af4d2dbc07b008b809c00dcf4b2ff56bef25e669fef6b1692a37008c8601"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000040",
+      "sha256": "sha256:bb27435b3aba56ac3a5a2ee5842283412f399d9dae7e6f02bfc572d031def445"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000041",
+      "sha256": "sha256:25680220ab169f115739fe6ccf90cc160f3d3d6df459cca0bae890dac7578b6d"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000042",
+      "sha256": "sha256:7c9cc913412ee6eb41ce75bd95d80e49fb803e51fc0493c7f055b92376a8d86f"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000043",
+      "sha256": "sha256:610aad3828bc47434a5ae26955cbe49029241cdbc055af66ff2c3f2b79c979a7"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000044",
+      "sha256": "sha256:bc77d99f54533f7667e8f4f2ac789c5b2753dcfbd0d9325089bdbefe9892b603"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000045",
+      "sha256": "sha256:79875a5a1079993271a3ab14d23a13f3da3d577fb89cc255a9959c795d04ea69"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000046",
+      "sha256": "sha256:eefd5fd5ebef634356ce28abfea0e332632bfcb880c28da8b0ec8f4d49a0f8ed"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000047",
+      "sha256": "sha256:4eadceba9bf87b4e767d481b8710766569f7940ef2769d2054e06912bdbeb82c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000048",
+      "sha256": "sha256:914ede0e64a925cf9d7b7960ff9ca3378bffd9524caad04b38df41f8e7e80e7a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000049",
+      "sha256": "sha256:61ef5af4dc111ae1ccbb4034983f7b680114ac15deb1a18eb61987f8dfbfe6da"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000050",
+      "sha256": "sha256:754b0f07eddeecaef5fc0723cf13506b6ea08efde251354c9edbd6c2a4eb5582"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000051",
+      "sha256": "sha256:f1c64b64c10d2b28178fdcd1cc9eb730c41351bd6e6734f9bbfbb63ae1eb793e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000052",
+      "sha256": "sha256:ce98df4c4e3ec879f708ee749af88855c1b34d284671638a113835c33934d0c8"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000053",
+      "sha256": "sha256:edae1a4f4340597e9e04e40415719dfa3c8efabc01f912a19dbca76ad27059f1"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000054",
+      "sha256": "sha256:718935ca8cc0d7cc0db6cca893569a5030e97f962a8e33cb881b7b81ec616088"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000055",
+      "sha256": "sha256:1c6db577e78c1ca35a8179157a4b967fa42170cad85cf2abc4b7a652871e93d5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000056",
+      "sha256": "sha256:a6d98b03f0f7e6bcbaee344c41369023183ab901addad9dddc0538a26d9da38b"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000057",
+      "sha256": "sha256:0dfb01c5c5d8fc546e97cc94b5eedd09d891d60b44edf379680e2e89335ff73d"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000058",
+      "sha256": "sha256:6f61bdbc37a4212c96f66bf65231e9a1d15ed0cab14a3884dd2db9ff6cbb085a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000059",
+      "sha256": "sha256:003bb99e4d0ff746ce57c1662cdfe29ce8e62d69a7d2382577f7b58d069116ab"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000060",
+      "sha256": "sha256:441b222dc0b55c7c302f22aa4438afd8c51653609286efb913d275cd8b560768"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000061",
+      "sha256": "sha256:7fca0d9e1543f1cfaddc15eb7e54ed42ce75101fe6794398b134cf77ec52dcec"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000062",
+      "sha256": "sha256:e9050729788793ff674b716be91f98f3a7a72d8336e9121e7b56ec6c69bb2c69"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000063",
+      "sha256": "sha256:8fdb4b1cd18354aa25132b37d1511e0e4b2f35d9ae28ac0692ebde06117b555f"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000064",
+      "sha256": "sha256:cfe40c12f2742ef6afa84c704f5b768ddb34983f1cef5aecc3d658a4d522b01b"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000065",
+      "sha256": "sha256:2c4d4ef9f03d85dbba6124e4ea5994c384e304c94ec48415e5f50939f9b319a5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000066",
+      "sha256": "sha256:2edb0587c93234986eecda00764fd2fc2010bc8365a0765676a5d45dae78cb32"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000067",
+      "sha256": "sha256:45ca03910ef644374e2897b0707cc0edc253d10cb7a2c8608b12cf5858fc05ee"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000068",
+      "sha256": "sha256:8310654675c6de31fc2b3815c1ff11d6802a3adbc868755f0e822d7ac962e23f"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000069",
+      "sha256": "sha256:88dd19896db044f06c6530766604c8bb2fa9b9acd361e74a646aa02f03a46fb9"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000070",
+      "sha256": "sha256:6b8d4987287f45a6d01c4478effd2f2642b1a31111a9195a73e9fab8f9d34d5b"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000071",
+      "sha256": "sha256:20a7d2cf386803acfd91e8f019c5790e806d43e4c39474d0462726c506388b40"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000072",
+      "sha256": "sha256:97eff29f1ca3d89279e26c4620588b9f11bc66be229d12f2e53a6f76845b1962"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000073",
+      "sha256": "sha256:31512842fa8c91c3f235f88f7a6eeda9e0da8446c68ff74f6cf6090c7fcec6a7"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000074",
+      "sha256": "sha256:b30c9060da7b1036a2d112a866957fa027bbcad2b2becfbcc8bbbc084e7173a6"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000075",
+      "sha256": "sha256:85343dd2c8d986893b35047fea45a1cbb16ad90c28a4b55a4c57f85fb38053e3"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000076",
+      "sha256": "sha256:903bf13f5faeae79e75c8f361aed1d084784b1b9058d35768a6e05cf07c9c915"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000077",
+      "sha256": "sha256:d72bc8ac57f7cbfbb8130fa619abffbd8fd88e647b78c37c8ed18ef08bc8e06a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000078",
+      "sha256": "sha256:7564328aed67f531944289ba89302817e6113e74104d7b2a9149bc61ee513402"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000079",
+      "sha256": "sha256:a1ddbb58a922b6a3c9fc30aaa4fb8ff222f4ba44a08858bbe0f598b63ac2c5da"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000080",
+      "sha256": "sha256:30b66e6f100d26169f82fb16dc778b43c54f5e71031049d0cafad6c8bc922860"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000081",
+      "sha256": "sha256:acb13f947ebf85060278e123da51be50b7258d20c75f9554d7a3b878f0b8d0a9"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000082",
+      "sha256": "sha256:52a7b5c8249f981b61014888137390e270b542b197839fe1a2b910baf4596166"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000083",
+      "sha256": "sha256:b31b964a3ac6f45e69f1755d480fe2ee043e78121f5f56aadb920e5a14a9721e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000084",
+      "sha256": "sha256:c282803e29e9bf5fb8368f2da993513bffd6c23b2235df1131a804b952ca45d6"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000085",
+      "sha256": "sha256:3a611fcaee66cf4b6e7ab112e134c352b9c4d42ac307d9194c91b9ba2ebc85af"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000086",
+      "sha256": "sha256:349a69890aa5d1dd3bf9451e068ef3efd73d562ca052cc67908d8d2584f0edcc"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000087",
+      "sha256": "sha256:3d8a5a218ce2f5cf3a77f5fefddbc351b0d2f73eb51e57048aa6c7c972c8811a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000088",
+      "sha256": "sha256:b3deaf4dde1986bbf44c3e15c2a6b7acd898f81335009cf5fc7f27a371d47910"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000089",
+      "sha256": "sha256:4b95817e8473e70a89dbcf7e95cfc450fdfbcf43d27ff64338d1f96fa71175fb"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000090",
+      "sha256": "sha256:d99f7d71a15e298ebcc8aba4e120a597c7355dbc5b30d08e5996640dbd6a773a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000091",
+      "sha256": "sha256:3df7867ced26b4cf4e51978315b955ff3e3ca18f07029c00973de75fccffb39f"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000092",
+      "sha256": "sha256:5d343d5a8b98448d960f326f2b76b18f96b30e6b26bc980ffb4f29ce04cfe61b"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000093",
+      "sha256": "sha256:f3ea61aa9a8982ff754eec887a0b38ac522a248ff5c0ce21c1752dcd1d0d43a1"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000094",
+      "sha256": "sha256:612b7ffdcbb1172fcb33365215a50b6bfbbec1f3a2649032dbcad2599c46d126"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000095",
+      "sha256": "sha256:776dc4126afd609ace30e06e5502daf2ed306003c42944e0ded67c163e435171"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000096",
+      "sha256": "sha256:faf7c0c5e513fd36461ed323c85b75796e5210441682a9432175e86f7373e135"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000097",
+      "sha256": "sha256:30ca92a074cbeac4d3e7eb4131ea0107bd80ea670ac0c9af6301523ec58e3f19"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000098",
+      "sha256": "sha256:e45b0992b91475879f9b2714e8e48ffe16cf60a67c79d0cbda69d58f46be8201"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000099",
+      "sha256": "sha256:09d35b7313f109c1a6bed45d5a51b66a84e08ba9b8bbb89b25da43de30acdba1"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000100",
+      "sha256": "sha256:fbedaf1d1fb86760f2549dc7c1b3e6003c1e044bd9544b4a32ea63a383c4f04b"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000101",
+      "sha256": "sha256:1c8e789b3254fe79c2e9395e621a391392c4d11b0a306e9a89a03074a8cc2e57"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000102",
+      "sha256": "sha256:c49cb3198d71f486a3127dc403fecf7b38e39ef3f57633af126b4c5625b71bdf"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000103",
+      "sha256": "sha256:d9f690e19da1fc9f96d01cb67324e68e9f43546ce004e5951253161eed763f94"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000104",
+      "sha256": "sha256:a07eede670645398e2089f1c57de3613287cff76fd02bd183c3e75a139f6bf4c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000105",
+      "sha256": "sha256:8907f0a80f30b9fce4cd8a8047f3d85b8bf7f900cf7613c549934d1711a0d0cd"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000106",
+      "sha256": "sha256:f5445058c09c814b3e09ea47774f59e8c2fa75a281b2e5bbbcac6ca5d484ef7e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000107",
+      "sha256": "sha256:3ec54340c0687c60467e80a700112c6f5841609c086df93cb48cd4a3a1d2c482"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000108",
+      "sha256": "sha256:5d0eb91516021f465a4e514b14788f94835d691e97907a99c349e35df5579aa5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000109",
+      "sha256": "sha256:e72895f2486acda1deb38249b8bf7b05076055675baa13418c927d44189e54b2"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000110",
+      "sha256": "sha256:c14208b84cb4c475f164af672f57409319866120a5f5ff8c134fb1ccce6dfb64"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000111",
+      "sha256": "sha256:ba5bc53f4bf65cc85d3e06d100a0633b1d542b30521536cdd42fd5c9bec26447"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000112",
+      "sha256": "sha256:97e0672591f4be38909e9a95f0e911feda682a9beb644f927e9d3aac117ec910"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000113",
+      "sha256": "sha256:b6fb9b0663bfc22e14cd4377aabbf4e67f38535486e262b148dadf080bd1d68d"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000114",
+      "sha256": "sha256:4ed2723e33801002c1af388713205310683738ea2ba65d16eddaafdf8523a075"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000115",
+      "sha256": "sha256:66d339c9f2964dfa65e4dd7e289f9937fab77f8c7f8d2d917f1d8f488e7a0be6"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000116",
+      "sha256": "sha256:19979a5a2da873aa708932bb3795220b7269db611f9b2fe8f08868a333f2fd10"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000117",
+      "sha256": "sha256:82652ae5d37502115b7b61178e6a9cf9a75fb131fed6aca4280e6d40b437e35e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000118",
+      "sha256": "sha256:190f8debce7ffc4e3b463bfa55610b6f3ce92db02797169b56576e833e10db7a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000119",
+      "sha256": "sha256:7d2461cb4438d8521ff62c8d7dc104ca9a4bdb2823b2839df5060c027d3cd135"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000120",
+      "sha256": "sha256:ed36395c682de3af1c81764372705486412065141bbfbffed65f1b95922b755c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000121",
+      "sha256": "sha256:fa01ebe5f65ba6dd6a66c23e21473f0f7fa6c2cea630d965758abad6ca24c29c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000122",
+      "sha256": "sha256:722cd84b2c316a6e7696aee936e89e65668f826b373dcdc29792d1e053f88285"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000123",
+      "sha256": "sha256:caf7e4b51db89d2dc75b67eb95b4e5caefe9749a70e6fcd86ed28cf46d7f616a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000124",
+      "sha256": "sha256:5368f18d1677320af8859b5e92421df93b0b0d591f420880d63bdb0ee21f2bf0"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000125",
+      "sha256": "sha256:d1ddaecebe4c9bf001ac85a5576854af1974792190202e8638473117f4106b6e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000126",
+      "sha256": "sha256:605153e712d9c56539473ed085ac6fc57d38377eb7180fa2cbebb642153e8741"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000127",
+      "sha256": "sha256:52b9c6e4dd3a9fb3f48050bf4bfc7a5c12e51a0a44417c45a64c822399f8711e"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000128",
+      "sha256": "sha256:38a3da4938ede95de52882761220e520530b938eff0490bbb80ce98a7d08a966"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000129",
+      "sha256": "sha256:5aba15ec39407263c0ecfec9157429573f5c9f86bd250daeeaf6fb09b34eef79"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000130",
+      "sha256": "sha256:1071b4867bd2bb5d420cfb447cd74e30c1f80c236f2a941475fa4b3f9f79db38"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000131",
+      "sha256": "sha256:ce479fdedd69d73cdf7c964a01aeb9e5573a9589d90640dc13c074ccd8789d4a"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000132",
+      "sha256": "sha256:75598ff960d7ba18813a747111012331cf6fe69e3097c8abd0f676c5fefb56fa"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000133",
+      "sha256": "sha256:e9919db6f00728fef4014054390d5fd26e9bdc5aa84da6d7098250c4f4aea7d5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000134",
+      "sha256": "sha256:6eb80dcebbd876993d9b6f548523c13dc4704abf6c0391c263b8660b41dc022c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000135",
+      "sha256": "sha256:9fb35aff36423a974d3ad4318ae4c5d9b2cc333d4156eb2b7c286993b6f99412"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000136",
+      "sha256": "sha256:c8924b251340754f97814fa07c363c6f39d976d77b40a62f944ab5b0477983f8"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000137",
+      "sha256": "sha256:ff19ab6531a58b00a2ddc0dbefc3228ae5e79de6ff968994c7bb157261cb5394"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000138",
+      "sha256": "sha256:2b0dc7c408a3fd0305823a3f296252f0993a12e4bba5b7f23de4e9dce6ce7ccd"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000139",
+      "sha256": "sha256:b7b035ab89925e970053ec72670d3d4d0a8a8cf2036b675f806f1460723482a7"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000140",
+      "sha256": "sha256:3f58f4d0e53381cf81d66e2f502b542bf80a8869dabd8287ae1d5be18f63620c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000141",
+      "sha256": "sha256:9a3b9d0ba7ef168dd95a8ab7254300428afe3e4d874bd37b5485b2f8177274e9"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000142",
+      "sha256": "sha256:50bd5bb4dd8916ea2a31426245830eb627a7f9cfb40877a22c24e98ed07608d3"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000143",
+      "sha256": "sha256:e974e3004b4c84a657548712c496bc6f9484e83558e89ff1a07b566a52631194"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000144",
+      "sha256": "sha256:a0d5e7e46de5e5a3b06c4fa12216f88ada23922f1a17fa471cec246ba01586e5"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000145",
+      "sha256": "sha256:21847d213076309a843157c9a0c8f62ef209e94ba0c674dfca20f487105859f4"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000146",
+      "sha256": "sha256:9934d6464070ce42e3d3bafc1acab0d609d21221ab1c4b2c909c77327dfde83c"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000147",
+      "sha256": "sha256:fbfbaed9f88899e364056ed0ab139aaa4321757c1445716e393428276d121324"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000148",
+      "sha256": "sha256:b692bf0096e899e457ffe204e87902984701ed971c9a6d89c665c5ee2bc765c3"
+    },
+    {
+      "case_id": "field_workflow_holdout_v1-000149",
+      "sha256": "sha256:bfaace67878a2f5b17e9d504c7d46e5c8f260a1cdbdde3e4282453c14a32d570"
+    }
+  ],
+  "source_generator": "scripts/build_corrected_field_workflow_holdout.py",
+  "source_path": "data/eval/field_workflow_holdout_v1.jsonl",
+  "source_sha256": "e76a01938a29638747f52be24d6eab11de52108810933b44adfd275fc9e8e50f"
+}

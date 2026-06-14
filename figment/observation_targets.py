@@ -134,7 +134,11 @@ def apply_navigation_scaffolding(
         patched["source_cards"] = source_cards
         patched_fields.add("source_cards")
 
-    pathways = _scaffold_candidate_pathways(patched.get("candidate_protocol_pathways"), source_cards)
+    pathways = _scaffold_candidate_pathways(
+        patched.get("candidate_protocol_pathways"),
+        source_cards,
+        fired_card_ids,
+    )
     if patched.get("candidate_protocol_pathways") != pathways:
         patched["candidate_protocol_pathways"] = pathways
         patched_fields.add("candidate_protocol_pathways")
@@ -291,10 +295,16 @@ def _fill_required_observation_targets(
     selected_required_observation_ids: Iterable[str] = (),
 ) -> list[str]:
     source_cards = {str(card_id) for card_id in output.get("source_cards", []) if str(card_id)}
+    candidate_cards = {
+        str(pathway.get("card_id", "")).strip()
+        for pathway in output.get("candidate_protocol_pathways", [])
+        if isinstance(pathway, Mapping) and str(pathway.get("card_id", "")).strip() in source_cards
+    }
+    observation_cards = candidate_cards or source_cards
     actionable_targets = [
         target
         for target in targets
-        if target["card_id"] in source_cards
+        if target["card_id"] in observation_cards
         and target["card_id"] not in CARD_IDS_EXEMPT_FROM_OBSERVATION_TARGETS
     ]
     if not actionable_targets:
@@ -401,7 +411,11 @@ def _scaffold_source_cards(value: Any, retrieved_ids: list[str], fired_card_ids:
     return source_cards[:6]
 
 
-def _scaffold_candidate_pathways(value: Any, source_cards: list[str]) -> list[dict[str, str]]:
+def _scaffold_candidate_pathways(
+    value: Any,
+    source_cards: list[str],
+    fired_card_ids: list[str],
+) -> list[dict[str, str]]:
     source_set = set(source_cards)
     pathways: list[dict[str, str]] = []
     if isinstance(value, list):
@@ -417,26 +431,29 @@ def _scaffold_candidate_pathways(value: Any, source_cards: list[str]) -> list[di
                     "reason_relevant": str(item.get("reason_relevant") or "Retrieved from confirmed intake."),
                 }
             )
-    existing_pathway_ids = {item["card_id"] for item in pathways}
-    for card_id in source_cards:
-        if card_id in existing_pathway_ids:
+    pathway_ids = {pathway["card_id"] for pathway in pathways}
+    for card_id in fired_card_ids:
+        if card_id not in source_set:
+            continue
+        if card_id in pathway_ids:
             continue
         pathways.append(
             {
                 "card_id": card_id,
-                "reason_relevant": "Retrieved from confirmed intake and deterministic rule context.",
+                "reason_relevant": "Required by deterministic rule or cited protocol context.",
             }
         )
-        existing_pathway_ids.add(card_id)
-        if len(pathways) >= 3:
-            break
+        pathway_ids.add(card_id)
     if not pathways:
+        fallback_source_cards = [
+            card_id for card_id in source_cards if card_id not in CARD_IDS_EXEMPT_FROM_OBSERVATION_TARGETS
+        ] or source_cards
         pathways = [
             {
                 "card_id": card_id,
                 "reason_relevant": "Retrieved from confirmed intake and deterministic protocol context.",
             }
-            for card_id in source_cards[:3]
+            for card_id in fallback_source_cards[:3]
         ]
     return pathways
 

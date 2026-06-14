@@ -132,10 +132,16 @@ def build_focused_repair_prompt(
     if mandatory_source_cards:
         repair_context["mandatory_source_cards"] = list(mandatory_source_cards)
     if repair_scope.name == "missing_observations":
-        repair_context["required_observation_targets"] = targets_for_failure_cards(
+        required_targets = targets_for_failure_cards(
             required_observation_targets or (),
             repair_scope.failures,
         )
+        repair_context["required_observation_targets"] = required_targets
+        repair_context["required_display_text_must_copy_exactly"] = [
+            str(target.get("display_text", "")).strip()
+            for target in required_targets
+            if str(target.get("display_text", "")).strip()
+        ]
     return (
         f"{original_prompt}\n\n"
         "Your previous navigator JSON failed deterministic validation. Perform focused field repair only.\n"
@@ -155,7 +161,7 @@ def build_focused_repair_prompt(
 def mandatory_source_card_ids_for_scope(scope: RepairScope) -> tuple[str, ...]:
     """Return source-card IDs that a focused citation/pathway repair must retain."""
 
-    if scope.name != "citations_and_pathways":
+    if scope.name not in {"citations_and_pathways", "source_card_closure", "source_card_negative_correction"}:
         return ()
     ids: list[str] = []
     for failure in scope.failures:
@@ -180,6 +186,12 @@ def missing_mandatory_source_cards(scope: RepairScope, repair_output: Mapping[st
 
 def _classify_failure(failure: str) -> tuple[str, tuple[str, ...]]:
     normalized = failure.lower()
+    if "source_card_closure" in normalized:
+        return "source_card_closure", ("source_cards", "candidate_protocol_pathways")
+    if "source_card_negative_correction" in normalized:
+        return "source_card_negative_correction", ("source_cards", "candidate_protocol_pathways")
+    if "observation_patch_repair" in normalized:
+        return "observation_patch_repair", ("missing_info_to_collect", "next_observations_to_collect")
     if "handoff_note_sbar" in normalized:
         return "handoff_note_sbar", ("handoff_note_sbar",)
     if "missing_info_to_collect does not reference required observations" in normalized:
@@ -235,7 +247,7 @@ def _ordered_unique_fields(fields: Iterable[str]) -> tuple[str, ...]:
 
 
 def _fields_for_scope(scope_name: str, fields: Iterable[str]) -> tuple[str, ...]:
-    if scope_name == "citations_and_pathways":
+    if scope_name in {"citations_and_pathways", "source_card_closure", "source_card_negative_correction"}:
         return ("source_cards", "candidate_protocol_pathways")
     return _ordered_unique_fields(fields)
 
@@ -250,12 +262,32 @@ def _scope_instruction(scope_name: str) -> str:
     if scope_name == "missing_observations":
         return (
             "Repair only missing_info_to_collect and next_observations_to_collect. Reference required observations "
-            "from required_observation_targets by id and display_text; avoid generic placeholders."
+            "from required_observation_targets by id and display_text; avoid generic placeholders. Copy every "
+            "display_text listed in FOCUSED_REPAIR_CONTEXT.required_display_text_must_copy_exactly verbatim into "
+            "missing_info_to_collect, then put the highest-priority 3 to 7 of those exact display_text values in "
+            "next_observations_to_collect. Preserve useful previous values, but do not omit a required display_text "
+            "because related wording is already present."
         )
     if scope_name == "citations_and_pathways":
         return (
             "Repair only source_cards and candidate_protocol_pathways. Cite only retrieved or otherwise allowed "
             "card IDs, and ensure every candidate pathway card_id also appears in source_cards."
+        )
+    if scope_name == "source_card_closure":
+        return (
+            "Repair only source_cards and candidate_protocol_pathways. Add missing mandatory support cards "
+            "for safety-boundary and SBAR content, preserve valid clinical source cards, and do not add "
+            "irrelevant clinical distractors."
+        )
+    if scope_name == "source_card_negative_correction":
+        return (
+            "Repair only source_cards and candidate_protocol_pathways. Remove irrelevant or disallowed source "
+            "cards while preserving mandatory clinical, safety-boundary, and SBAR support cards."
+        )
+    if scope_name == "observation_patch_repair":
+        return (
+            "Repair only missing_info_to_collect and next_observations_to_collect. Replace scaffold-like or "
+            "duplicated observation text with clinical, responder-facing observations tied to the cited cards."
         )
     if scope_name == "forbidden_clinical_language":
         return (

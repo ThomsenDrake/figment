@@ -20,12 +20,19 @@ from figment.focused_repair import build_focused_repair_prompts  # noqa: E402
 from figment.observation_targets import required_observation_targets  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
 from figment.retrieval import known_card_ids  # noqa: E402
+from figment.retrieval import load_protocol_cards  # noqa: E402
 from figment.retrieval import query_from_intake  # noqa: E402
 from figment.retrieval import search_protocol_cards  # noqa: E402
 from figment.rules import run_red_flag_checks  # noqa: E402
 from figment.trace import stable_hash  # noqa: E402
 from figment.validators import urgency_floor_from_rules  # noqa: E402
 from figment.validators import validate_navigator_output  # noqa: E402
+from scripts.generate_finetune_data import SAFETY_CARD_ID  # noqa: E402
+from scripts.generate_finetune_data import SBAR_CARD_ID  # noqa: E402
+from scripts.generate_finetune_data import _required_retrieved_ids  # noqa: E402
+from scripts.generate_finetune_data import ensure_retrieved_cards  # noqa: E402
+from scripts.generate_finetune_data import uses_v7_source_card_policy  # noqa: E402
+from scripts.generate_finetune_data import v7_source_card_closure_issues  # noqa: E402
 
 
 DATASET_PATH = Path("data/finetune/figment_sft_v1.jsonl")
@@ -71,6 +78,15 @@ V5_REPAIR_SCOPE_DISTRIBUTION = (
     ("protocol_urgency", 20),
     ("schema", 20),
 )
+V6_REPAIR_SCOPE_DISTRIBUTION = (
+    ("missing_observations", 250),
+)
+V7_REPAIR_SCOPE_DISTRIBUTION = (
+    ("source_card_closure", 160),
+    ("source_card_negative_correction", 50),
+    ("observation_patch_repair", 30),
+)
+V7_SOURCE_REPAIR_SCOPES = {"source_card_closure", "source_card_negative_correction"}
 
 
 def dataset_paths(dataset_version: str) -> dict[str, Path]:
@@ -142,6 +158,23 @@ def build_repair_row(base_row: dict[str, Any], spec: dict[str, Any], scope_name:
     rule_results = [rule.to_dict() for rule in run_red_flag_checks(intake)]
     floor = urgency_floor_from_rules(rule_results)
     retrieved = search_protocol_cards(query_from_intake(intake), limit=6)
+    spec_dataset_version = str(spec.get("dataset_version") or base_row.get("version") or "")
+    if uses_v7_source_card_policy(spec_dataset_version):
+        cards_by_id = {str(card["card_id"]): card for card in load_protocol_cards()}
+        synthetic_spec = type(
+            "SyntheticSpecForRepairGeneration",
+            (),
+            {
+                "target_protocol_card_id": str(spec.get("target_protocol_card_id") or ""),
+                "dataset_version": spec_dataset_version,
+            },
+        )()
+        retrieved = ensure_retrieved_cards(
+            retrieved,
+            required_ids=_required_retrieved_ids(synthetic_spec, rule_results),
+            cards_by_id=cards_by_id,
+            limit=6,
+        )
     retrieved_ids = [str(item.get("card_id", "")) for item in retrieved if item.get("card_id")]
     original_prompt, prompt_hash = build_prompt(intake, retrieved, rule_results, floor)
     gold_output = json.loads(base_row["messages"][1]["content"])
@@ -159,7 +192,11 @@ def build_repair_row(base_row: dict[str, Any], spec: dict[str, Any], scope_name:
         strict_schema=True,
     ).to_dict()
     failures = validation.get("failures") or []
-    if validation.get("passed") is True or not failures:
+    extra_failures = _extra_failures_for_scope(previous_output, spec, scope_name)
+    failures = list(failures) + extra_failures
+    if validation.get("passed") is True and not extra_failures:
+        return None
+    if not failures:
         return None
     focused_prompts = build_focused_repair_prompts(
         original_prompt=original_prompt,
@@ -246,12 +283,41 @@ def _corrupt_output(output: dict[str, Any], scope_name: str, floor: str) -> dict
     elif scope_name == "schema":
         corrupted.pop("safety_boundary", None)
         corrupted.pop("responder_plain_language_script", None)
+    elif scope_name == "source_card_closure":
+        source_cards = [str(card_id) for card_id in corrupted.get("source_cards", []) if str(card_id)]
+        corrupted["source_cards"] = [card_id for card_id in source_cards if card_id not in {SAFETY_CARD_ID, SBAR_CARD_ID}]
+    elif scope_name == "source_card_negative_correction":
+        source_cards = [str(card_id) for card_id in corrupted.get("source_cards", []) if str(card_id)]
+        for distractor in ("PED-DEHYD-RED-FLAGS-v1", "WOUND-INFECTION-ESCALATION-v1", "FEVER-RED-FLAGS-v1"):
+            if distractor not in source_cards:
+                source_cards.append(distractor)
+                break
+        corrupted["source_cards"] = source_cards
+    elif scope_name == "observation_patch_repair":
+        corrupted["missing_info_to_collect"] = ["source card ids", "deterministic rule results", "navigator validation result"]
+        corrupted["next_observations_to_collect"] = list(corrupted["missing_info_to_collect"])
     else:
         return None
     return corrupted
 
 
+def _extra_failures_for_scope(previous_output: dict[str, Any], spec: dict[str, Any], scope_name: str) -> list[str]:
+    if scope_name == "source_card_closure":
+        target = str(spec.get("target_protocol_card_id") or "")
+        issues = v7_source_card_closure_issues(previous_output, target_protocol_card_id=target)
+        return [f"source_card_closure:{issue}" for issue in issues]
+    if scope_name == "source_card_negative_correction":
+        return ["source_card_negative_correction:remove irrelevant or disallowed source card"]
+    if scope_name == "observation_patch_repair":
+        return ["observation_patch_repair:replace scaffold-owned observation fields"]
+    return []
+
+
 def _scope_schedule(count: int, *, dataset_version: str = "figment_sft_v1") -> list[str]:
+    if dataset_version.startswith("figment_sft_v7"):
+        return _weighted_scope_schedule(count, V7_REPAIR_SCOPE_DISTRIBUTION)
+    if dataset_version.startswith("figment_sft_v6"):
+        return _weighted_scope_schedule(count, V6_REPAIR_SCOPE_DISTRIBUTION)
     if dataset_version.startswith("figment_sft_v5"):
         return _weighted_scope_schedule(count, V5_REPAIR_SCOPE_DISTRIBUTION)
     if dataset_version.startswith("figment_sft_v4"):

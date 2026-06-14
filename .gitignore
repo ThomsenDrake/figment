@@ -33,7 +33,21 @@ output/playwright/
 
 # Generated local training/evidence artifacts
 data/finetune/
+artifacts/
+checkpoints/
+models/
+outputs/
+runs/
 tools/
+*.gguf
+*.safetensors
+pytorch_model*.bin
+adapter_model*.bin
+traces/*_artifacts/
+traces/figment_sft_v*/
+traces/figment_sft_v*.jsonl
+traces/*.pulled_json
+traces/local_llama_cpp_eval_*.jsonl
 traces/local_4b_evidence_*/
 traces/local_4b_finetuned_evidence_*/
 traces/local_4b_finetuned_v*_evidence_*/

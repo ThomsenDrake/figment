@@ -59,6 +59,48 @@ def test_pregnancy_danger_sign_still_fires_for_confirmed_pregnancy() -> None:
     assert "PREG-001" in _rule_ids(intake)
 
 
+def test_negated_chest_pain_does_not_create_red_flags() -> None:
+    for symptoms in (
+        "fever with chills during postpartum period, no chest pain reported",
+        "cough after dust exposure; no fever, no shortness of breath, no chest pain, speaking normally",
+        "brief lightheadedness after standing; denies fainting, chest pain, weakness, vision change, and shortness of breath",
+        "fatigue after work, denies chest pain, no chest pressure, no trouble breathing",
+    ):
+        intake = {
+            "confirmed": True,
+            "setting": "field clinic",
+            "patient_age": "43",
+            "pregnancy_status": "not_applicable",
+            "chief_concern": "routine check",
+            "symptoms": symptoms,
+            "vitals": "pulse regular",
+            "allergies": "",
+            "medications": "",
+            "available_supplies": "",
+            "responder_note": "",
+        }
+
+        assert "red_flag_chest_pain" not in _rule_ids(intake)
+
+
+def test_positive_chest_pain_still_fires_with_unrelated_negation() -> None:
+    intake = {
+        "confirmed": True,
+        "setting": "field clinic",
+        "patient_age": "54",
+        "pregnancy_status": "not_applicable",
+        "chief_concern": "chest pressure",
+        "symptoms": "no fever, but chest pain with sweating for about twenty minutes",
+        "vitals": "pulse fast",
+        "allergies": "",
+        "medications": "",
+        "available_supplies": "",
+        "responder_note": "",
+    }
+
+    assert "red_flag_chest_pain" in _rule_ids(intake)
+
+
 def test_month_based_pediatric_age_counts_as_pediatric() -> None:
     intake = {
         "confirmed": True,

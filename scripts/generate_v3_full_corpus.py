@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--teacher-max-tokens", type=int, default=700)
     parser.add_argument("--teacher-error-retries", type=int, default=2)
     parser.add_argument("--teacher-error-sleep-seconds", type=float, default=2.0)
+    parser.add_argument("--no-teacher-worker", action="store_true")
     parser.add_argument("--max-attempts-multiplier", type=int, default=8)
     parser.add_argument("--validation-fraction", type=float, default=0.1)
     parser.add_argument("--seed", default="figment-modal-sft-v3")
@@ -244,6 +245,8 @@ def generate_one_shard(args: argparse.Namespace, spec: ShardSpec) -> dict[str, A
         cmd.append("--log-rejections")
     if args.dry_run:
         cmd.append("--dry-run")
+    if args.no_teacher_worker:
+        cmd.append("--no-teacher-worker")
 
     spec.log.parent.mkdir(parents=True, exist_ok=True)
     with spec.log.open("a", encoding="utf-8") as log:

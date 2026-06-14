@@ -225,10 +225,66 @@ def test_prompt_context_includes_sbar_template_and_internal_target_id_contract()
     }
 
     internal_contract = context["internal_generation_contract"]
-    assert internal_contract["optional_trace_only_keys"] == ["selected_required_observation_ids"]
+    assert internal_contract["trace_only_keys"] == ["selected_required_observation_ids"]
+    assert internal_contract["required_when_required_observation_targets_selected"] == [
+        "selected_required_observation_ids"
+    ]
     assert internal_contract["strip_before_user_display"] is True
     assert "selected_required_observation_ids" in internal_contract["selected_required_observation_ids"]
     assert "Choose required observation IDs before writing observation text" in prompt
     assert "recognizable responder-facing observation text" in internal_contract["selected_required_observation_ids"]
     assert "selected_required_observation_ids" not in context["navigator_output_schema"]
     assert "selected_required_observation_ids" not in context["required_json_skeleton"]
+
+
+def test_prompt_context_names_mandatory_source_cards_and_model_owned_observation_policy() -> None:
+    prompt, _ = build_prompt(
+        _confirmed_chest_pain_intake(),
+        _retrieved_cards(),
+        _emergency_chest_pain_rules(),
+        "emergency",
+    )
+    context = _context_from_prompt(prompt)
+
+    assert context["mandatory_source_card_ids"] == [
+        "CHEST-PAIN-ESCALATION-v1",
+        "REFERRAL-SBAR-v1",
+    ]
+    assert context["mandatory_required_observation_target_ids"] == [
+        "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+        "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+        "CHEST-PAIN-ESCALATION-v1::required_observation::3",
+    ]
+    assert context["mandatory_required_observation_targets"] == [
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::1",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "chest pain description",
+        },
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::2",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "onset and duration",
+        },
+        {
+            "id": "CHEST-PAIN-ESCALATION-v1::required_observation::3",
+            "card_id": "CHEST-PAIN-ESCALATION-v1",
+            "title": "Chest pain escalation",
+            "display_text": "available vital signs",
+        },
+    ]
+    policy = context["required_observation_generation_policy"]
+    assert policy["model_owned_not_scaffold_filled"] is True
+    assert "mandatory_required_observation_targets" in policy
+    assert "missing_info_to_collect" in policy["source_card_scope"]
+    assert "mandatory_source_card_id" in policy["source_cards"]
+    assert "mandatory_required_observation_target_id" in policy["selected_required_observation_ids"]
+    assert "confirm/document" in policy["text_requirement"]
+    assert "Emit selected_required_observation_ids as a trace-only key" in prompt
+    assert "Include every mandatory_source_card_id in source_cards" in prompt
+    assert "retrieved support cards used for safety/SBAR" in prompt
+    assert "Do not add SAFETY-BOUNDARIES-v1 or REFERRAL-SBAR-v1 as candidate pathways" in prompt
+    assert "make the target display_text visible in missing_info_to_collect" in prompt
+    assert "Copy each display_text into missing_info_to_collect" in prompt

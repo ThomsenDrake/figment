@@ -54,34 +54,56 @@ Existing local corpora:
 - `data/finetune/figment_sft_v5.jsonl`: `1300` rows.
 - `data/finetune/figment_sft_v5.jsonl` includes `242` `required_observation_id_selection` rows and `55` `focused_repair:missing_observations` rows.
 
+## Replay Audit Update
+
+The first v6 replay audit changed the corpus shape.
+
+Artifacts:
+
+- `scripts/build_v6_replay_corpus.py`
+- `tests/test_v6_replay_selection.py`
+- `data/finetune/figment_sft_v6_replay.jsonl`
+- `data/finetune/figment_sft_v6_replay_manifest.json`
+
+Audit result:
+
+- `570` direct replay rows passed the v6 cleanliness policy.
+- Selected replay rows by source:
+  - `figment_sft_v3`: `330`
+  - `figment_sft_v4`: `120`
+  - `figment_sft_v5`: `120`
+- Selected replay rows by category:
+  - `focused_repair:handoff_note_sbar`: `233`
+  - `focused_repair:citations_and_pathways`: `163`
+  - `focused_repair:protocol_urgency`: `87`
+  - `focused_repair:schema`: `87`
+- Selected replay rows by task type:
+  - `focused_repair`: `570`
+
+Interpretation:
+
+The usable replay pool is smaller than planned, and it contains no clean old full-navigator rows. Most old full-navigator rows teach at least one behavior v6 is supposed to stop: duplicated long `missing_info_to_collect` / `next_observations_to_collect` lists, harness metadata inside medic observation fields, or observation-focused rows without clean selected required-observation IDs.
+
+Rejected rows are still useful as negative/correction seeds, but not as positive replay targets. For v6 SFT, only the teacher-rewritten corrected output should be used as the assistant target.
+
 ## V6 Dataset Shape
 
 Target total: `2000` rows.
 
-New v6 delta: `1100` rows.
+New v6 delta: `1430` rows.
 
-- `750` full navigator rows focused on required-observation ownership.
+- `900` full navigator rows focused on required-observation ownership.
 - `250` focused repair rows for `missing_info_to_collect` and `next_observations_to_collect`.
-- `100` contrastive negative/correction rows where the teacher fixes common bad outputs.
+- `180` contrastive correction rows seeded from rejected old outputs, where the teacher rewrites the output into the v6 shape.
+- `100` preservation rows for SBAR, source-card discipline, urgency floors, red flags, noisy intake, and low-resource constraints.
 
-Filtered replay: `900` rows.
+Filtered replay: `570` rows.
 
-- `450` v5 replay rows:
-  - source-card invariant rows,
-  - SBAR observation-ownership rows,
-  - general regression rows,
-  - noisy field/audio-style rows,
-  - only those required-observation rows that pass the v6 observation policy.
-- `300` v4 replay rows:
-  - radio handoff,
-  - SBAR handoff usefulness,
-  - source-card discipline,
-  - low-resource constraints.
-- `150` v3 replay rows:
-  - rural clinic intake,
-  - disaster triage,
-  - low-resource constraints,
-  - missing-observation prioritization rows that pass v6 filters.
+- `330` v3 focused-repair replay rows.
+- `120` v4 focused-repair replay rows.
+- `120` v5 focused-repair replay rows.
+
+Do not force the original `900` replay quota. If a row fails the v6 replay policy, either reject it outright or use it only as a seed for a teacher-generated correction example.
 
 Modal split target:
 
@@ -248,32 +270,35 @@ Expected result:
 - Create: `data/finetune/figment_sft_v6_replay.jsonl`
 - Create: `data/finetune/figment_sft_v6_replay_manifest.json`
 
-- [ ] Sample `450` accepted replay rows from v5.
-- [ ] Sample `300` accepted replay rows from v4.
-- [ ] Sample `150` accepted replay rows from v3.
-- [ ] Run every candidate through the v6 observation policy.
-- [ ] Preserve original row metadata with `source_dataset_version`.
-- [ ] Add `replay_reason` metadata to each retained row.
-- [ ] Save a manifest with source counts, rejected counts, and SHA256.
+- [x] Audit v3-v5 rows with the v6 replay policy.
+- [x] Select only rows that avoid duplicate long observation lists and harness metadata in observation fields.
+- [x] Preserve only clean direct replay rows instead of filling quota with bad rows.
+- [x] Run every candidate through the v6 observation policy.
+- [x] Preserve original row metadata with `source_dataset_version`.
+- [x] Add `replay_reason` metadata to each retained row.
+- [x] Save a manifest with source counts, rejected counts, and SHA256.
 
 Suggested command:
 
 ```bash
 PYTHONPATH=. .venv/bin/python scripts/build_v6_replay_corpus.py \
-  --v3 data/finetune/figment_sft_v3.jsonl \
-  --v4 data/finetune/figment_sft_v4.jsonl \
-  --v5 data/finetune/figment_sft_v5.jsonl \
+  --input data/finetune/figment_sft_v5.jsonl \
+  --input data/finetune/figment_sft_v4.jsonl \
+  --input data/finetune/figment_sft_v3.jsonl \
   --output data/finetune/figment_sft_v6_replay.jsonl \
   --manifest data/finetune/figment_sft_v6_replay_manifest.json \
-  --v5-count 450 \
-  --v4-count 300 \
-  --v3-count 150
+  --figment-sft-v5-target 450 \
+  --figment-sft-v4-target 300 \
+  --figment-sft-v3-target 150
 ```
 
 Expected result:
 
-- `data/finetune/figment_sft_v6_replay.jsonl` contains `900` rows.
+- `data/finetune/figment_sft_v6_replay.jsonl` contains `570` clean direct replay rows.
 - The manifest reports `0` v6 policy issues among retained rows.
+- The manifest records replay shortages rather than filling the planned quota with bad rows.
+- Selected rows contain `0` duplicate long missing/next observation lists.
+- Selected rows contain `0` harness-metadata cue hits in assistant observation fields.
 
 ### Task 4: Generate New V6 Delta Rows
 
@@ -287,8 +312,10 @@ Expected result:
 
 - [ ] Add v6 failure classes to the case-spec scheduler.
 - [ ] Oversample required-observation targets that v5 scaffold-filled.
+- [ ] Use rejected old full-navigator rows as negative/correction seeds, not as positive SFT targets.
 - [ ] Ask the teacher for full navigator output in the real prompt shape.
 - [ ] Ask the teacher for focused repair output in the real repair prompt shape.
+- [ ] Ask the teacher to rewrite rejected prior outputs into clean v6 full-navigator targets.
 - [ ] Reject rows that fail v6 observation policy.
 - [ ] Reject rows that fail existing harness alignment checks.
 - [ ] Save accepted rows and case specs with anti-overfit signatures enabled.
@@ -299,6 +326,7 @@ Suggested smoke:
 PYTHONPATH=. .venv/bin/python scripts/generate_v6_full_corpus.py \
   --new-delta-count 10 \
   --repair-count 3 \
+  --correction-count 2 \
   --parallelism 1 \
   --output /tmp/figment_sft_v6_delta_smoke.jsonl \
   --case-specs /tmp/figment_sft_v6_delta_smoke_case_specs.jsonl \
@@ -307,7 +335,7 @@ PYTHONPATH=. .venv/bin/python scripts/generate_v6_full_corpus.py \
 
 Expected smoke result:
 
-- `13` accepted rows.
+- `15` accepted rows.
 - `0` verifier issues.
 - At least one accepted row for duplicate-list correction.
 - At least one accepted row for harness-owned metadata exclusion.
@@ -316,8 +344,9 @@ Suggested full generation:
 
 ```bash
 PYTHONPATH=. .venv/bin/python scripts/generate_v6_full_corpus.py \
-  --new-delta-count 850 \
+  --new-delta-count 1000 \
   --repair-count 250 \
+  --correction-count 180 \
   --parallelism 4 \
   --teacher-error-retries 3 \
   --teacher-error-sleep-seconds 10 \
@@ -328,7 +357,8 @@ PYTHONPATH=. .venv/bin/python scripts/generate_v6_full_corpus.py \
 
 Expected full result:
 
-- `1100` accepted delta rows.
+- `1430` accepted delta rows.
+- Delta includes `900` required-observation full-navigator rows, `250` focused missing-observation repair rows, `180` teacher-rewritten correction rows, and `100` preservation rows.
 - `0` verifier issues.
 - Delta manifest records category counts and rejected row reasons.
 
@@ -368,6 +398,7 @@ PYTHONPATH=. .venv/bin/python scripts/verify_finetune_harness_alignment.py \
 Expected result:
 
 - Full dataset has `2000` rows.
+- Full dataset is `1430` new/corrected delta rows plus `570` clean direct replay rows.
 - Modal train split has `1800` rows.
 - Modal validation split has `200` rows.
 - Verifier reports `issue_count=0`.
@@ -473,7 +504,7 @@ Nice to have:
 Do not proceed to full training if:
 
 - v6 smoke rows fail harness verification;
-- the replay builder cannot produce `900` clean rows without weakening filters;
+- the replay builder cannot produce more than `570` clean rows without weakening filters and the plan still assumes old direct replay can fill the gap;
 - teacher output repeatedly treats harness metadata as medic observation text;
 - smoke training shows non-finite loss;
 - smoke eval regresses safety, source cards, or unsupported handoff facts.

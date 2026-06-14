@@ -8,8 +8,8 @@ def test_current_submission_claims_stay_evidence_gated() -> None:
 
     assert report["status"] == "passed"
     assert report["violations"] == []
-    assert report["gate_status"]["off_grid"] is True
-    assert report["gate_status"]["local_4b"] is True
+    assert report["gate_status"]["off_grid"] is False
+    assert report["gate_status"]["local_4b"] is False
     assert report["gate_status"]["local_asr"] is False
     assert report["gate_status"]["backyard_user_use"] is False
 

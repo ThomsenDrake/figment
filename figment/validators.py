@@ -271,9 +271,16 @@ def _validate_missing_observations_against_cards(
         required_observations = card.get("required_observations", [])
         if not isinstance(required_observations, list) or not required_observations:
             continue
-        required_sets = [_grounding_tokens(observation) for observation in required_observations]
-        if not any(tokens & observation_tokens for tokens in required_sets):
-            result.add(f"missing_info_to_collect does not reference required observations for {card_id}")
+        missing_required_observations = []
+        for observation in required_observations:
+            required_tokens = _grounding_tokens(observation)
+            if required_tokens and not required_tokens <= observation_tokens:
+                missing_required_observations.append(str(observation))
+        if missing_required_observations:
+            result.add(
+                "missing_info_to_collect does not reference required observations for "
+                f"{card_id}: {', '.join(missing_required_observations[:8])}"
+            )
 
 
 def _is_negated_safety_phrase(text: str, match_start: int) -> bool:

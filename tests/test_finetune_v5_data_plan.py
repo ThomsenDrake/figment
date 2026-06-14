@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 def _accepted_v5_row():
+    from figment.observation_targets import required_observation_targets
     from figment.retrieval import load_protocol_cards
     from scripts.generate_finetune_data import assemble_teacher_navigator_output
     from scripts.generate_finetune_data import build_sft_row
@@ -11,6 +12,7 @@ def _accepted_v5_row():
     from scripts.generate_finetune_data import generate_case_spec
     from scripts.generate_finetune_data import prepare_case
     from scripts.generate_finetune_data import score_candidate
+    from scripts.generate_finetune_data import v5_required_selected_observation_ids
 
     cards_by_id = {str(card["card_id"]): card for card in load_protocol_cards()}
     spec = generate_case_spec(0, cards_by_id, dataset_version="figment_sft_v5")
@@ -32,6 +34,19 @@ def _accepted_v5_row():
             "script": "I am checking protocol observations.",
         },
     )
+    selected_ids = v5_required_selected_observation_ids(
+        source_card_ids=[str(card_id) for card_id in candidate.get("source_cards", [])],
+        retrieved_cards=prepared.retrieved_cards,
+    )
+    required_targets_by_id = {str(target["id"]): target for target in required_observation_targets(prepared.retrieved_cards)}
+    required_observation_text = [
+        str(required_targets_by_id[selected_id]["display_text"])
+        for selected_id in selected_ids
+        if selected_id in required_targets_by_id
+    ]
+    candidate["selected_required_observation_ids"] = selected_ids
+    candidate["missing_info_to_collect"] = required_observation_text + list(candidate["missing_info_to_collect"])
+    candidate["next_observations_to_collect"] = required_observation_text
     result = score_candidate(candidate, prepared)
     assert result.passed is True
     row = build_sft_row(

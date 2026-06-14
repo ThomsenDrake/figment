@@ -43,6 +43,18 @@ def _find(patterns: tuple[str, ...], text: str) -> str | None:
     return None
 
 
+def _find_unnegated(
+    patterns: tuple[str, ...],
+    text: str,
+    negation_check: Any,
+) -> str | None:
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if not negation_check(text, match):
+                return match.group(0).strip()
+    return None
+
+
 def _is_pediatric(intake: Mapping[str, Any], text: str) -> bool:
     age = str(intake.get("patient_age", "")).strip().lower()
     month_match = re.search(r"\b(\d{1,3})\s*(?:mo|mos|month|months)\b", age)
@@ -102,6 +114,31 @@ def _has_positive_fever(text: str) -> bool:
         if not re.search(r"\b(?:no|not|denies|without)\s+(?:current(?:ly)?\s+|reported\s+)?(?:fever|febrile)\b", fever_context):
             return True
     return False
+
+
+def _is_negated_chest_match(text: str, match: re.Match[str]) -> bool:
+    start = match.start()
+    clause_start = max(text.rfind(boundary, 0, start) for boundary in (".", ";", "!", "?", "\n"))
+    prefix = text[clause_start + 1 : start].lower()
+
+    direct_negation = re.search(
+        r"\b(?:no|not|without|denies|denied|negative for|reports no)\s+"
+        r"(?:any\s+|active\s+|current(?:ly)?\s+|reported\s+)?$",
+        prefix,
+    )
+    if direct_negation:
+        return True
+
+    denial_marker = None
+    for marker in re.finditer(r"\b(?:denies|denied|negative for)\b", prefix):
+        denial_marker = marker
+    if not denial_marker:
+        return False
+
+    between = prefix[denial_marker.end() :]
+    if re.search(r"\b(?:but|however|except|except for|now|currently)\b", between):
+        return False
+    return True
 
 
 def _rule(rule_id: str, label: str, urgency: Urgency, evidence: str, card_id: str) -> RuleResult:
@@ -166,7 +203,7 @@ def _pregnancy_danger(intake: Mapping[str, Any], text: str) -> RuleResult | None
 
 
 def _chest_pain(_: Mapping[str, Any], text: str) -> RuleResult | None:
-    evidence = _find(
+    evidence = _find_unnegated(
         (
             r"\bchest pain\b",
             r"\bchest pressure\b",
@@ -174,6 +211,7 @@ def _chest_pain(_: Mapping[str, Any], text: str) -> RuleResult | None:
             r"\bchest pain with (?:shortness of breath|sweating|fainting|severe weakness)\b",
         ),
         text,
+        _is_negated_chest_match,
     )
     if not evidence:
         return None

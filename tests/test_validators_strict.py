@@ -60,8 +60,20 @@ def _navigator_output(**overrides: Any) -> dict[str, Any]:
                 "reason_relevant": "Chest pain with shortness of breath was reported.",
             }
         ],
-        "missing_info_to_collect": ["onset and duration", "complete vital signs"],
-        "next_observations_to_collect": ["shortness of breath trend"],
+        "missing_info_to_collect": [
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "sweating or fainting report",
+            "radiation to arm, jaw, back, or shoulder",
+            "available vital signs",
+        ],
+        "next_observations_to_collect": [
+            "chest pain description",
+            "onset and duration",
+            "shortness of breath report",
+            "available vital signs",
+        ],
         "conflicts_or_uncertainties": [],
         "responder_checklist": ["Escalate per cited local protocol."],
         "do_not_do": ["Do not diagnose or prescribe."],

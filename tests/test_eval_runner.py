@@ -55,7 +55,103 @@ class _FiredCardOmittedModelClient:
                 "handoff_request": "Request emergency review per cited local protocol cards.",
             },
             "responder_plain_language_script": "I am going to keep the stroke red flag visible and request emergency review.",
-            "safety_boundary": "Prototype protocol navigation only; no diagnosis or treatment order.",
+            "safety_boundary": "Prototype protocol navigation only; trained responder review required.",
+        }
+
+
+class _ObservationPatchRepairModelClient:
+    calls = 0
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def generate_json(self, _prompt: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.__class__.calls += 1
+        if context and context.get("repair_scope") == "missing_observations":
+            return {
+                "missing_info_to_collect": [
+                    "pregnancy or postpartum status",
+                    "bleeding report",
+                    "abdominal pain report",
+                    "headache or vision symptoms",
+                    "seizure or fainting report",
+                    "fever report",
+                ],
+                "next_observations_to_collect": [
+                    "pregnancy or postpartum status",
+                    "bleeding report",
+                    "abdominal pain report",
+                    "headache or vision symptoms",
+                    "seizure or fainting report",
+                    "fever report",
+                ],
+            }
+        rules = _postpartum_fever_rules()
+        return {
+            "protocol_urgency": "emergency",
+            "red_flags": rules,
+            "intake_facts": [
+                {
+                    "fact": "Postpartum fever with chills; blood pressure pending.",
+                    "status": "reported",
+                    "source": "structured_field",
+                }
+            ],
+            "candidate_protocol_pathways": [
+                {
+                    "card_id": "FEVER-RED-FLAGS-v1",
+                    "reason_relevant": "Fever during postpartum period fired the fever card.",
+                },
+                {
+                    "card_id": "PREG-DANGER-SIGNS-v1",
+                    "reason_relevant": "Postpartum fever also fired the pregnancy danger-sign card.",
+                },
+            ],
+            "missing_info_to_collect": [
+                "temperature if available",
+                "age or pregnancy status",
+                "mental status",
+                "neck stiffness report",
+                "rash report",
+                "hydration observations",
+                "available vital signs",
+            ],
+            "next_observations_to_collect": [
+                "Check temperature if available.",
+                "Assess mental status now.",
+                "age or pregnancy status",
+            ],
+            "conflicts_or_uncertainties": ["Blood pressure is still pending."],
+            "responder_checklist": ["Keep emergency escalation active per local protocol."],
+            "do_not_do": ["Do not diagnose.", "Do not prescribe."],
+            "source_cards": [
+                "PREG-DANGER-SIGNS-v1",
+                "FEVER-RED-FLAGS-v1",
+                "SAFETY-BOUNDARIES-v1",
+                "REFERRAL-SBAR-v1",
+            ],
+            "handoff_note_sbar": {
+                "situation": "postpartum fever",
+                "background": "Setting: flood shelter. Age: 44 years. Pregnancy status: postpartum two weeks.",
+                "assessment_observations_only": (
+                    "Symptoms: fever with chills. Vitals: temperature 101.5 F; pulse fast; "
+                    "blood pressure pending. Red flags: Pregnancy danger sign; Fever escalation cue."
+                ),
+                "handoff_request": "Request emergency review/escalation per cited local protocol cards.",
+            },
+            "responder_plain_language_script": (
+                "We need emergency review through the local pathway while we document the missing observations."
+            ),
+            "safety_boundary": "Prototype protocol navigation only; trained responder review required.",
+            "selected_required_observation_ids": [
+                "FEVER-RED-FLAGS-v1::required_observation::1",
+                "FEVER-RED-FLAGS-v1::required_observation::2",
+                "FEVER-RED-FLAGS-v1::required_observation::3",
+                "FEVER-RED-FLAGS-v1::required_observation::4",
+                "FEVER-RED-FLAGS-v1::required_observation::5",
+                "FEVER-RED-FLAGS-v1::required_observation::6",
+                "FEVER-RED-FLAGS-v1::required_observation::7",
+            ],
         }
 
 
@@ -91,6 +187,88 @@ def _retrieved_without_stroke_cards() -> list[dict[str, Any]]:
                 "card_id": "REFERRAL-SBAR-v1",
                 "title": "Referral SBAR",
                 "required_observations": [],
+            },
+        },
+    ]
+
+
+def _postpartum_fever_rules() -> list[dict[str, str]]:
+    return [
+        {
+            "rule_id": "PREG-001",
+            "label": "Pregnancy danger sign",
+            "urgency": "emergency",
+            "evidence": "fever",
+            "card_id": "PREG-DANGER-SIGNS-v1",
+        },
+        {
+            "rule_id": "FEVER-001",
+            "label": "Fever escalation cue",
+            "urgency": "urgent",
+            "evidence": "pregnancy/infant fever context",
+            "card_id": "FEVER-RED-FLAGS-v1",
+        },
+    ]
+
+
+def _retrieved_postpartum_fever_cards() -> list[dict[str, Any]]:
+    return [
+        {
+            "card_id": "FEVER-RED-FLAGS-v1",
+            "score": 1.0,
+            "source": "test",
+            "card": {
+                "card_id": "FEVER-RED-FLAGS-v1",
+                "title": "Fever escalation red flags",
+                "required_observations": [
+                    "temperature if available",
+                    "age or pregnancy status",
+                    "mental status",
+                    "neck stiffness report",
+                    "rash report",
+                    "hydration observations",
+                    "available vital signs",
+                ],
+                "red_flags": ["fever during pregnancy or postpartum"],
+            },
+        },
+        {
+            "card_id": "PREG-DANGER-SIGNS-v1",
+            "score": 0.95,
+            "source": "test",
+            "card": {
+                "card_id": "PREG-DANGER-SIGNS-v1",
+                "title": "Pregnancy danger signs",
+                "required_observations": [
+                    "pregnancy or postpartum status",
+                    "bleeding report",
+                    "abdominal pain report",
+                    "headache or vision symptoms",
+                    "seizure or fainting report",
+                    "fever report",
+                    "available vital signs",
+                ],
+                "red_flags": ["fever with pregnancy or postpartum concern"],
+            },
+        },
+        {
+            "card_id": "SAFETY-BOUNDARIES-v1",
+            "score": 0.8,
+            "source": "test",
+            "card": {
+                "card_id": "SAFETY-BOUNDARIES-v1",
+                "title": "Safety boundaries",
+                "required_observations": ["confirmed intake status"],
+            },
+        },
+        {
+            "card_id": "REFERRAL-SBAR-v1",
+            "score": 0.7,
+            "source": "test",
+            "card": {
+                "card_id": "REFERRAL-SBAR-v1",
+                "title": "Referral and SBAR format",
+                "required_observations": ["situation or reason for handoff"],
             },
         },
     ]
@@ -195,12 +373,70 @@ def test_eval_runner_repairs_known_fired_card_when_retrieval_missed_it(monkeypat
 
     assert record["final_validation"]["passed"] is True
     assert record["competence_success"] is False
+    assert "STROKE-SIGNS-v1" not in record["raw_model_output"]["source_cards"]
+    assert "STROKE-SIGNS-v1" not in {
+        pathway["card_id"] for pathway in record["raw_model_output"]["candidate_protocol_pathways"]
+    }
+    assert "STROKE-SIGNS-v1" in record["scaffolded_model_output"]["source_cards"]
+    assert "STROKE-SIGNS-v1" in {
+        pathway["card_id"] for pathway in record["scaffolded_model_output"]["candidate_protocol_pathways"]
+    }
     assert "STROKE-SIGNS-v1" in record["final_output"]["source_cards"]
     assert "STROKE-SIGNS-v1" in record["actual_candidate_pathway_card_ids"]
     assert record["field_provenance"]["source_cards"] == "deterministic_fallback"
     assert record["field_provenance"]["candidate_protocol_pathways"] == "deterministic_fallback"
     assert record["expected_label_score"]["target_card_in_source_cards"] is True
     assert record["expected_label_score"]["target_card_in_candidate_pathways"] is True
+
+
+def test_eval_runner_repairs_model_observation_patch_fields(monkeypatch) -> None:
+    _ObservationPatchRepairModelClient.calls = 0
+    monkeypatch.setattr(run_eval, "ModelClient", _ObservationPatchRepairModelClient)
+    monkeypatch.setattr(
+        run_eval,
+        "run_red_flag_checks",
+        lambda _: [_FakeRule(rule) for rule in _postpartum_fever_rules()],
+    )
+    monkeypatch.setattr(run_eval, "search_protocol_cards", lambda *_args, **_kwargs: _retrieved_postpartum_fever_cards())
+
+    record = run_eval._evaluate_case(
+        {
+            "case_id": "unit-postpartum-fever-observation-repair",
+            "structured_intake": {
+                "setting": "flood shelter",
+                "patient_age": "44 years",
+                "pregnancy_status": "postpartum two weeks",
+                "chief_concern": "postpartum fever",
+                "symptoms": "fever with chills during postpartum period",
+                "vitals": "temperature 101.5 F; pulse fast; blood pressure pending",
+                "responder_note": "Confirmed postpartum fever concern.",
+                "confirmed": True,
+            },
+            "target_protocol_card_id": "FEVER-RED-FLAGS-v1",
+            "expected_min_protocol_urgency": "emergency",
+            "expected_red_flag_rule_ids": ["PREG-001", "FEVER-001"],
+            "expected_source_card_ids": ["PREG-DANGER-SIGNS-v1", "FEVER-RED-FLAGS-v1"],
+            "expected_candidate_pathway_card_ids": ["FEVER-RED-FLAGS-v1"],
+        },
+        FigmentConfig(model_backend="hosted_omni", nvidia_api_key="test-nvidia-key"),
+    )
+
+    assert _ObservationPatchRepairModelClient.calls == 2
+    assert record["final_validation"]["passed"] is True
+    assert record["raw_configured_model_success"] is False
+    assert record["repair_attempted"] is True
+    assert record["repair_success"] is True
+    assert record["competence_success"] is True
+    assert record["field_level_fallback_used"] is False
+    assert record["deterministic_scaffold_patched_fields"] == [
+        "missing_info_to_collect",
+        "next_observations_to_collect",
+    ]
+    assert record["field_provenance"]["missing_info_to_collect"] == "model_repaired"
+    assert record["field_provenance"]["next_observations_to_collect"] == "model_repaired"
+    assert "PREG-DANGER-SIGNS-v1::required_observation::2" in record["filled_required_observation_ids"]
+    assert "bleeding report" in record["final_output"]["missing_info_to_collect"]
+    assert "selected_required_observation_ids" not in record["final_output"]
 
 
 def test_eval_cli_runs_initial_cases_against_canned_without_network(tmp_path: Path) -> None:

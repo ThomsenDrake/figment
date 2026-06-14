@@ -19,17 +19,25 @@ from figment.observation_targets import required_observation_targets  # noqa: E4
 from figment.eval_metrics import score_expected_labels  # noqa: E402
 from figment.prompt_builder import build_prompt  # noqa: E402
 from figment.retrieval import known_card_ids  # noqa: E402
+from figment.retrieval import load_protocol_cards  # noqa: E402
 from figment.retrieval import query_from_intake  # noqa: E402
 from figment.retrieval import search_protocol_cards  # noqa: E402
 from figment.rules import run_red_flag_checks  # noqa: E402
 from figment.validators import urgency_floor_from_rules  # noqa: E402
 from figment.validators import validate_navigator_output  # noqa: E402
 from scripts.augment_finetune_repair_rows import _corrupt_output  # noqa: E402
+from scripts.augment_finetune_repair_rows import _extra_failures_for_scope  # noqa: E402
 from scripts.generate_finetune_data import forbidden_behavior_for_version  # noqa: E402
+from scripts.generate_finetune_data import ensure_retrieved_cards  # noqa: E402
+from scripts.generate_finetune_data import _required_retrieved_ids  # noqa: E402
 from scripts.generate_finetune_data import uses_v5_focused_policy  # noqa: E402
+from scripts.generate_finetune_data import uses_v6_observation_policy  # noqa: E402
+from scripts.generate_finetune_data import uses_v7_source_card_policy  # noqa: E402
 from scripts.generate_finetune_data import v2_policy_issues  # noqa: E402
 from scripts.generate_finetune_data import v3_policy_issues  # noqa: E402
 from scripts.generate_finetune_data import v5_policy_issues  # noqa: E402
+from scripts.generate_finetune_data import v6_policy_issues  # noqa: E402
+from scripts.generate_finetune_data import v7_source_card_closure_issues  # noqa: E402
 from scripts.generate_finetune_data import uses_v3_field_workflow_policy  # noqa: E402
 
 
@@ -53,6 +61,7 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
     rows = _read_jsonl(dataset_path)
     specs = {str(item["case_id"]): item for item in _read_jsonl(case_specs_path)}
     rows_by_id = {str(row.get("case_id")): row for row in rows}
+    cards_by_id = {str(card["card_id"]): card for card in load_protocol_cards()}
     issues: list[dict[str, Any]] = []
     categories: Counter[str] = Counter()
     task_types: Counter[str] = Counter()
@@ -78,6 +87,22 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
         rule_results = [rule.to_dict() for rule in run_red_flag_checks(intake)]
         floor = urgency_floor_from_rules(rule_results)
         retrieved = search_protocol_cards(query_from_intake(intake), limit=6)
+        spec_dataset_version = str(spec.get("dataset_version") or dataset_version)
+        if uses_v7_source_card_policy(spec_dataset_version):
+            synthetic_spec = type(
+                "SyntheticSpecForVerification",
+                (),
+                {
+                    "target_protocol_card_id": str(spec.get("target_protocol_card_id") or ""),
+                    "dataset_version": spec_dataset_version,
+                },
+            )()
+            retrieved = ensure_retrieved_cards(
+                retrieved,
+                required_ids=_required_retrieved_ids(synthetic_spec, rule_results),
+                cards_by_id=cards_by_id,
+                limit=6,
+            )
         retrieved_ids = [str(item.get("card_id", "")) for item in retrieved if item.get("card_id")]
         harness_prompt, prompt_hash = build_prompt(intake, retrieved, rule_results, floor)
         expected_user_prompt = harness_prompt
@@ -105,7 +130,51 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
             ):
                 issue_type = "v2_forbidden_lexical_tripwire" if issue.startswith("forbidden_lexical_tripwire:") else f"v2_{issue}"
                 issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
-        if uses_v5_focused_policy(dataset_version) and task_type != "focused_repair":
+        if uses_v7_source_card_policy(dataset_version) and task_type != "focused_repair":
+            for issue in v6_policy_issues(
+                output,
+                failure_class=str(row.get("category") or row.get("metadata", {}).get("failure_class") or spec.get("failure_class") or ""),
+                expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                expected_candidate_pathway_card_ids=[
+                    str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                ],
+                structured_intake=intake,
+                rule_results=rule_results,
+                retrieved_cards=retrieved,
+                target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                dataset_version=dataset_version,
+            ):
+                issue_type = "v6_forbidden_lexical_tripwire" if issue.startswith("forbidden_lexical_tripwire:") else f"v6_{issue}"
+                issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+            for issue in v7_source_card_closure_issues(
+                output,
+                target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+            ):
+                issues.append(_issue(row_number, case_id, f"v7_{issue}", policy_issue=issue))
+        elif uses_v6_observation_policy(dataset_version) and task_type != "focused_repair":
+            for issue in v6_policy_issues(
+                output,
+                failure_class=str(row.get("category") or row.get("metadata", {}).get("failure_class") or spec.get("failure_class") or ""),
+                expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                expected_candidate_pathway_card_ids=[
+                    str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                ],
+                structured_intake=intake,
+                rule_results=rule_results,
+                retrieved_cards=retrieved,
+                target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                dataset_version=dataset_version,
+            ):
+                issue_type = "v6_forbidden_lexical_tripwire" if issue.startswith("forbidden_lexical_tripwire:") else f"v6_{issue}"
+                issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+            _append_v6_metadata_issues(
+                issues,
+                row_number=row_number,
+                case_id=case_id,
+                row=row,
+                output=output,
+            )
+        elif uses_v5_focused_policy(dataset_version) and task_type != "focused_repair":
             for issue in v5_policy_issues(
                 output,
                 failure_class=str(row.get("category") or row.get("metadata", {}).get("failure_class") or spec.get("failure_class") or ""),
@@ -154,6 +223,14 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
         if task_type == "focused_repair":
             base_row = rows_by_id.get(base_case_id)
             if base_row is None:
+                metadata = row.get("metadata", {}) if isinstance(row.get("metadata"), dict) else {}
+                replay_audit = metadata.get("v7_replay_audit") or metadata.get("v6_replay_audit")
+                if isinstance(replay_audit, dict) and replay_audit.get("accepted") is True:
+                    if not isinstance(output, dict) or not output:
+                        issues.append(_issue(row_number, case_id, "replay_focused_repair_output_empty"))
+                    if "focused field repair only" not in str(messages[0].get("content", "")).lower():
+                        issues.append(_issue(row_number, case_id, "replay_focused_repair_prompt_not_self_contained"))
+                    continue
                 issues.append(_issue(row_number, case_id, "focused_repair_missing_base_row", base_case_id=base_case_id))
                 continue
             repair_scope = str(row.get("metadata", {}).get("repair_scope", ""))
@@ -178,7 +255,8 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
                     for item in build_focused_repair_prompts(
                         original_prompt=harness_prompt,
                         previous_output=previous_output,
-                        failures=previous_validation.get("failures", []),
+                        failures=list(previous_validation.get("failures", []))
+                        + _extra_failures_for_scope(previous_output, spec, repair_scope),
                         urgency_floor=floor,
                         required_observation_targets=required_observation_targets(retrieved),
                     )
@@ -204,7 +282,56 @@ def verify_rows(*, dataset_path: Path, case_specs_path: Path) -> dict[str, Any]:
             for field in expected_fields:
                 if output.get(field) != base_gold.get(field):
                     issues.append(_issue(row_number, case_id, "focused_repair_field_not_from_base_gold", field=field))
-            if uses_v5_focused_policy(dataset_version):
+            if uses_v7_source_card_policy(dataset_version):
+                reconstructed = json.loads(json.dumps(base_gold))
+                reconstructed.update(output)
+                for issue in v6_policy_issues(
+                    reconstructed,
+                    failure_class=str(spec.get("failure_class") or base_row.get("category") or ""),
+                    expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                    expected_candidate_pathway_card_ids=[
+                        str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                    ],
+                    structured_intake=intake,
+                    rule_results=rule_results,
+                    retrieved_cards=retrieved,
+                    target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                    dataset_version=dataset_version,
+                ):
+                    issue_type = (
+                        "v6_forbidden_lexical_tripwire"
+                        if issue.startswith("forbidden_lexical_tripwire:")
+                        else f"v6_{issue}"
+                    )
+                    issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+                for issue in v7_source_card_closure_issues(
+                    reconstructed,
+                    target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                ):
+                    issues.append(_issue(row_number, case_id, f"v7_{issue}", policy_issue=issue))
+            elif uses_v6_observation_policy(dataset_version):
+                reconstructed = json.loads(json.dumps(base_gold))
+                reconstructed.update(output)
+                for issue in v6_policy_issues(
+                    reconstructed,
+                    failure_class=str(spec.get("failure_class") or base_row.get("category") or ""),
+                    expected_red_flag_rule_ids=[str(item) for item in spec.get("expected_red_flag_rule_ids", [])],
+                    expected_candidate_pathway_card_ids=[
+                        str(item) for item in spec.get("expected_candidate_pathway_card_ids", [])
+                    ],
+                    structured_intake=intake,
+                    rule_results=rule_results,
+                    retrieved_cards=retrieved,
+                    target_protocol_card_id=str(spec.get("target_protocol_card_id") or ""),
+                    dataset_version=dataset_version,
+                ):
+                    issue_type = (
+                        "v6_forbidden_lexical_tripwire"
+                        if issue.startswith("forbidden_lexical_tripwire:")
+                        else f"v6_{issue}"
+                    )
+                    issues.append(_issue(row_number, case_id, issue_type, policy_issue=issue))
+            elif uses_v5_focused_policy(dataset_version):
                 reconstructed = json.loads(json.dumps(base_gold))
                 reconstructed.update(output)
                 for issue in v5_policy_issues(
@@ -376,6 +503,53 @@ def _append_v5_metadata_issues(
                 row_number,
                 case_id,
                 "v5_metadata_must_include_selected_required_observation_ids_missing",
+                missing=missing_selected,
+            )
+        )
+
+
+def _append_v6_metadata_issues(
+    issues: list[dict[str, Any]],
+    *,
+    row_number: int,
+    case_id: str,
+    row: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    dataset_version = str(metadata.get("dataset_version") or row.get("version") or "")
+    if not dataset_version.startswith("figment_sft_v6"):
+        issues.append(_issue(row_number, case_id, "v6_metadata_dataset_version_missing"))
+    if metadata.get("training_focus") != row.get("category"):
+        issues.append(
+            _issue(
+                row_number,
+                case_id,
+                "v6_metadata_training_focus_mismatch",
+                training_focus=metadata.get("training_focus"),
+                category=row.get("category"),
+            )
+        )
+    if metadata.get("v6_training_policy_version") != 1:
+        issues.append(_issue(row_number, case_id, "v6_metadata_policy_version_missing"))
+
+    required_targets = metadata.get("required_observation_targets")
+    if not isinstance(required_targets, list):
+        issues.append(_issue(row_number, case_id, "v6_metadata_required_observation_targets_missing"))
+
+    forbidden_cues = metadata.get("harness_metadata_cues_not_observations")
+    if not isinstance(forbidden_cues, list) or "source card ids" not in {str(item).lower() for item in forbidden_cues}:
+        issues.append(_issue(row_number, case_id, "v6_metadata_harness_cues_missing"))
+
+    required_selected_ids = _string_list(metadata.get("must_include_selected_required_observation_ids"))
+    selected_ids = set(_string_list(output.get("selected_required_observation_ids")))
+    missing_selected = [target_id for target_id in required_selected_ids if target_id not in selected_ids]
+    if missing_selected:
+        issues.append(
+            _issue(
+                row_number,
+                case_id,
+                "v6_metadata_must_include_selected_required_observation_ids_missing",
                 missing=missing_selected,
             )
         )

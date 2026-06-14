@@ -114,6 +114,8 @@ def test_build_focused_repair_prompt_limits_model_to_selected_fields() -> None:
     assert "CHEST-PAIN-ESCALATION-v1" in prompt
     assert "CHEST-PAIN-ESCALATION-v1::required_observation::1" in prompt
     assert "chest pain description" in prompt
+    assert "required_display_text_must_copy_exactly" in prompt
+    assert "Copy every display_text" in prompt
 
 
 def test_citation_repair_prompt_names_mandatory_source_cards() -> None:
