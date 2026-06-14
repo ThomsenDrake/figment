@@ -43,6 +43,7 @@ tools/
 *.safetensors
 pytorch_model*.bin
 adapter_model*.bin
+traces/
 traces/*_artifacts/
 traces/figment_sft_v*/
 traces/figment_sft_v*.jsonl
