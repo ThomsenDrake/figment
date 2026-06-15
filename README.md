@@ -21,6 +21,14 @@ Figment turns messy field intake into a card-cited protocol workflow: confirm th
 
 > **Safety boundary:** Figment is a prototype, not a medical device. It does not diagnose, prescribe, dose medication, autonomously triage, or replace a trained responder, supervisor, clinician, or local protocol.
 
+## Launch Demo Video
+
+<video controls width="100%" src="https://huggingface.co/spaces/build-small-hackathon/figment/resolve/main/assets/figment-live-space-launch-final.mp4">
+  Figment launch demo video showing the hosted Space workflow.
+</video>
+
+[Open the video directly](https://huggingface.co/spaces/build-small-hackathon/figment/resolve/main/assets/figment-live-space-launch-final.mp4).
+
 ## Current Snapshot
 
 | Surface | Current evidence | What it means | Boundary |
@@ -53,7 +61,7 @@ make evidence-gates PYTHON=.venv/bin/python
 | Well-Tuned | **Submission-fit with measured artifacts.** | The public model archive includes measured v14p tuned 4B BF16/GGUF artifacts. Keep deterministic patch and focused-repair separation visible when citing results. |
 | Off-Brand | **Submission-fit.** | The app uses a custom Gradio Server UI rather than default Gradio Blocks, with the Field Kit Workbench workflow and trace surfaces. |
 | Llama Champion | **Claimed.** | The local evaluation traces used the llama.cpp/GGUF route, and the repo includes llama.cpp-compatible local serving instructions for the tuned 4B artifacts. |
-| Sharing is Caring | **Submission-fit with remaining submission links pending.** | Public Space, GitHub source, model archive, dataset/eval traces, and trace schema are published; final demo video and social post links remain separate submission artifacts. |
+| Sharing is Caring | **Submission-fit with remaining social link pending.** | Public Space, GitHub source, model archive, dataset/eval traces, trace schema, and embedded launch video are published; final social post link remains a separate submission artifact. |
 | Field Notes | **Submission-fit / tentative.** | The combined Build Small writeup lives at [docs/figment-build-small-lessons-draft.md](docs/figment-build-small-lessons-draft.md), with final publication status still separate from this README. |
 
 ## Why Figment Exists
