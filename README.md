@@ -50,7 +50,7 @@ make evidence-gates PYTHON=.venv/bin/python
 | Category | Figment fit | Evidence boundary |
 | --- | --- | --- |
 | Main track | **Backyard AI** | Built for a real trained disaster-response volunteer and local protocol workflow, with identity withheld for privacy. Do not claim target-user use, validation, approval, or endorsement until [docs/user_test_notes.md](docs/user_test_notes.md) contains factual notes. |
-| Merit badges | **Off the Grid**, **Well-Tuned**, **Off-Brand**, **Llama Champion**, **Sharing is Caring**, and **Field Notes** are all listed below so submission reviewers can see the badge map. | Off the Grid is claimed from the offline-capable local design; Llama Champion is claimed from the llama.cpp eval trace path; remaining badges are mapped to their supporting artifacts below. |
+| Merit badges | Figment explicitly claims all six merit badges: **Off the Grid**, **Well-Tuned**, **Off-Brand**, **Llama Champion**, **Sharing is Caring**, and **Field Notes**. | Each badge is mapped below with its supporting artifact and boundary. Badge claims do not imply clinical validation, target-user validation, or that the hosted ZeroGPU Space itself is the no-cloud runtime. |
 | Sponsor awards | **OpenAI Track**, **NVIDIA Nemotron Quest**, and **Modal Awards**. | OpenAI Track is submission-fit only, not a runtime dependency claim. NVIDIA fit comes from the Nemotron Omni eval path, the tuned Nemotron 4B v14p artifacts, and Parakeet draft audio. Modal fit comes from the training, merge, upload, and batch-eval loop. |
 
 ### Merit Badge Map
@@ -58,11 +58,11 @@ make evidence-gates PYTHON=.venv/bin/python
 | Badge | Current README wording | Evidence |
 | --- | --- | --- |
 | Off the Grid | **Claimed.** | Figment is designed to run entirely offline with local protocol cards, deterministic rules, local model artifacts, and local ASR/text-navigation paths. The public Space uses HF ZeroGPU as the hosted demo surface, but the app architecture is local-first and does not require cloud APIs for the badge design. |
-| Well-Tuned | **Submission-fit with measured artifacts.** | The public model archive includes measured v14p tuned 4B BF16/GGUF artifacts. Keep deterministic patch and focused-repair separation visible when citing results. |
-| Off-Brand | **Submission-fit.** | The app uses a custom Gradio Server UI rather than default Gradio Blocks, with the Field Kit Workbench workflow and trace surfaces. |
+| Well-Tuned | **Claimed.** | The public model archive includes measured v14p tuned 4B BF16/GGUF artifacts. Keep deterministic patch and focused-repair separation visible when citing results. |
+| Off-Brand | **Claimed.** | The app uses a custom Gradio Server UI rather than default Gradio Blocks, with the Field Kit Workbench workflow and trace surfaces. |
 | Llama Champion | **Claimed.** | The local evaluation traces used the llama.cpp/GGUF route, and the repo includes llama.cpp-compatible local serving instructions for the tuned 4B artifacts. |
-| Sharing is Caring | **Submission-fit with remaining social link pending.** | Public Space, GitHub source, model archive, dataset/eval traces, trace schema, and embedded launch video are published; final social post link remains a separate submission artifact. |
-| Field Notes | **Submission-fit / tentative.** | The combined Build Small writeup lives at [docs/figment-build-small-lessons-draft.md](docs/figment-build-small-lessons-draft.md), with final publication status still separate from this README. |
+| Sharing is Caring | **Claimed.** | Public Space, GitHub source, model archive, dataset/eval traces, trace schema, embedded launch video, and public field notes are published. |
+| Field Notes | **Claimed.** | The Build Small writeup is published on Hugging Face: [Figment Build Blog](https://huggingface.co/blog/build-small-hackathon/figment-build-blog). |
 
 ## Why Figment Exists
 

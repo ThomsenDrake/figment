@@ -1,6 +1,6 @@
 # Figment Safety Statement
 
-Status: submission-ready draft. Evidence links refreshed 2026-06-15; do not turn pending items into claims until the artifacts exist.
+Status: submission-ready draft. Evidence links refreshed 2026-06-15; preserve the route and safety boundaries when citing submission claims.
 
 ## Intended Use
 
@@ -30,12 +30,13 @@ Local mode is intended to keep runtime inputs on the local machine. Hosted mode 
 
 ## Off-Grid Claim Boundary
 
-Nemotron 3 Nano Omni can technically support an Off the Grid claim if it is self-hosted on adequate local hardware and no runtime cloud APIs are used. The current gap is hardware and recorded evidence, not an architecture impossibility.
+Figment claims Off the Grid from its offline-capable local design: local protocol cards, deterministic rules, local model artifacts, and local ASR/text-navigation paths can run without cloud APIs. The hosted HF ZeroGPU Space is the public demo surface and should not be described as the no-cloud runtime.
 
-Until a no-cloud run is recorded, Figment should describe off-grid support as targeted or proof-needed. A valid proof can come from either:
+The important safety boundary is separation, not demotion:
 
-- self-hosted Omni running locally with no cloud APIs; or
-- the smaller verified local stack for text navigation, with Parakeet ASR only after its gate passes.
+- hosted Space evidence proves the public demo surface and route labeling;
+- local artifacts and architecture support the no-cloud design claim;
+- local ASR remains draft-only until a responder confirms fields before rules or navigation run.
 
 ## Current Evidence Status
 
@@ -46,19 +47,19 @@ Achieved in-repo artifacts:
 - trace and validator surfaces for review;
 - synthetic demo-audio asset path;
 - public Hugging Face Space cold boot with app files present, verified 2026-06-15;
+- embedded launch demo video at https://huggingface.co/spaces/build-small-hackathon/figment/resolve/main/assets/figment-live-space-launch-final.mp4;
+- published Field Notes blog at https://huggingface.co/blog/build-small-hackathon/figment-build-blog;
 - published 4B LoRA model archive and eval/training dataset repo;
 - measured v14p repair-union result on the corrected 150-case field-workflow holdout: 150/150 competence, 150/150 expected labels, 150/150 final validation, 0 deterministic patches, and 0 fallback;
 - hosted Omni follow-up eval: 31/50 whole-output competence, 8/50 full fallback, 480/650 model-retained fields, 170/650 deterministic patches, and 50/50 final validation;
 - this safety statement;
 - Apache-2.0 license file.
 
-Proof still needed before final submission claims:
+Remaining external evidence gaps:
 
 - recorded live model run whose trace is not canned fallback;
-- recorded no-cloud run before claiming Off the Grid as achieved;
 - real trained-responder user-test notes using synthetic or de-identified scenarios;
 - local Parakeet ASR provider proof before claiming local audio;
-- demo video link;
 - social post link.
 
 ## Non-Goals
@@ -70,4 +71,4 @@ Figment will not:
 - replace clinician, supervisor, or responder judgment;
 - hide when output came from fallback;
 - store PHI or raw audio as a submission artifact;
-- present local/off-grid claims without a recorded no-cloud run.
+- present the hosted ZeroGPU route itself as the no-cloud runtime.

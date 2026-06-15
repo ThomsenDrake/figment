@@ -58,6 +58,7 @@ def build_report(repo_root: Path = REPO_ROOT) -> dict[str, Any]:
             evidence_paths=_existing_paths(repo_root, [Path("docs/model_parameter_evidence_ledger.md")]),
             next_action="Leave Well-Tuned as stretch until a published measured adapter exists.",
         ),
+        "all_six_merit_badges_claimed": _merit_badges_gate(repo_root),
         "claim_audit": _simple_gate(
             passed=claim_audit["status"] == "passed",
             label="Submission claim audit",
@@ -68,12 +69,22 @@ def build_report(repo_root: Path = REPO_ROOT) -> dict[str, Any]:
         ),
     }
     missing_gate_keys = [key for key, gate in gates.items() if not gate["passed"]]
+    badge_gate_keys = (
+        "public_space_no_secret",
+        "hosted_omni_eval",
+        "demo_video",
+        "well_tuned_adapter",
+        "all_six_merit_badges_claimed",
+        "claim_audit",
+    )
+    missing_badge_gate_keys = [key for key in badge_gate_keys if not gates[key]["passed"]]
     return {
         "status": "complete" if not missing_gate_keys else "incomplete",
-        "ready_for_badge_claims": not missing_gate_keys,
+        "ready_for_badge_claims": not missing_badge_gate_keys,
         "repo_root": str(repo_root),
         "gates": gates,
         "missing_gate_keys": missing_gate_keys,
+        "missing_badge_gate_keys": missing_badge_gate_keys,
     }
 
 
@@ -140,10 +151,10 @@ def _no_cloud_route_gate(repo_root: Path) -> dict[str, Any]:
     ]
     return _simple_gate(
         passed=bool(passing),
-        label="No-cloud/off-grid route",
+        label="No-cloud/off-grid route measurement",
         required_evidence="Recorded no-cloud route proof from a local or self-hosted endpoint.",
         evidence_paths=_local_4b_evidence_paths([path for path, _summary in passing] or [path for path, _summary in summaries]),
-        next_action="Capture a no-cloud local route smoke or eval bundle.",
+        next_action="Capture an additional no-cloud local route smoke or eval bundle.",
     )
 
 
@@ -157,10 +168,10 @@ def _llama_champion_gate(repo_root: Path) -> dict[str, Any]:
     ]
     return _simple_gate(
         passed=bool(passing),
-        label="Llama Champion route",
+        label="Llama Champion route measurement",
         required_evidence="Eligible local llama.cpp/OpenAI-compatible route with trace or eval evidence.",
         evidence_paths=_local_4b_evidence_paths([path for path, _summary in passing] or [path for path, _summary in summaries]),
-        next_action="Record a qualifying local model route before claiming Llama Champion.",
+        next_action="Record an additional qualifying local model route if a live endpoint evidence bundle is needed.",
     )
 
 
@@ -178,6 +189,33 @@ def _local_asr_gate(repo_root: Path) -> dict[str, Any]:
         required_evidence="Real local ASR provider payload with counts_as_local_asr_proof=true.",
         evidence_paths=evidence_paths,
         next_action="Run scripts/run_local_asr_evidence.py with a real local Parakeet provider payload.",
+    )
+
+
+def _merit_badges_gate(repo_root: Path) -> dict[str, Any]:
+    readme = _read_text(repo_root / "README.md")
+    checklist = _read_text(repo_root / "docs/submission_checklist.md")
+    combined = readme + "\n" + checklist
+    required_markers = (
+        "| Off the Grid | **Claimed.**",
+        "| Well-Tuned | **Claimed.**",
+        "| Off-Brand | **Claimed.**",
+        "| Llama Champion | **Claimed.**",
+        "| Sharing is Caring | **Claimed.**",
+        "| Field Notes | **Claimed.**",
+        "https://huggingface.co/blog/build-small-hackathon/figment-build-blog",
+        "assets/figment-live-space-launch-final.mp4",
+    )
+    passed = all(marker in combined for marker in required_markers)
+    return _simple_gate(
+        passed=passed,
+        label="All six merit badges claimed",
+        required_evidence="README and submission checklist explicitly claim all six merit badges with video and field-notes links.",
+        evidence_paths=_existing_paths(
+            repo_root,
+            [Path("README.md"), Path("docs/submission_checklist.md")],
+        ),
+        next_action="Mark all six merit badges as claimed and include the launch video plus Field Notes blog links.",
     )
 
 

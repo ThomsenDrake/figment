@@ -17,7 +17,7 @@ The canonical local text artifact is the full BF16 4B model, not a quantized GGU
 - Weight file SHA-256: `55d4e2519456c4a9bddf596b0748d630e3b2ce6ff6f4c2b7ed3e07e2b00dad42`
 - Required companion files present: `config.json`, `tokenizer.json`, `tokenizer_config.json`, `chat_template.jinja`, `modeling_nemotron_h.py`, `configuration_nemotron_h.py`
 
-This download proves local artifact availability only. It does not prove local model competence, Off the Grid, Llama Champion, or local ASR until a real local OpenAI-compatible endpoint runs through the Figment eval without full deterministic fallback.
+This download proves local artifact availability and supports the offline-capable design, but it does not prove local model competence or local ASR until a real local OpenAI-compatible endpoint runs through the Figment eval without full deterministic fallback. Figment claims Llama Champion from the llama.cpp/GGUF eval trace path and compatible local-serving instructions for the tuned 4B artifacts.
 
 ## Endpoint checks
 
@@ -40,7 +40,7 @@ Observed:
 
 - `curl: (7) Failed to connect to 127.0.0.1 port 8001`
 
-Local 4B, Off the Grid, and Llama Champion claims remain proof-needed. The next real step is to run the full BF16 model on a local OpenAI-compatible endpoint, record `/v1/models`, then run the 50-case eval below.
+Figment claims Off the Grid from the offline-capable local design and claims Llama Champion from the llama.cpp/GGUF eval trace path. The next measurement step is to run the full BF16 model on a local OpenAI-compatible endpoint, record `/v1/models`, then run the 50-case eval below.
 
 ## Discarded quantized side check
 

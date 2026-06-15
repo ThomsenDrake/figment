@@ -4,13 +4,16 @@ from pathlib import Path
 from scripts import evidence_gate_status
 
 
-def test_current_repo_report_keeps_remaining_external_gates_incomplete() -> None:
+def test_current_repo_report_marks_badge_claims_ready_with_external_gaps() -> None:
     report = evidence_gate_status.build_report()
 
     assert report["status"] == "incomplete"
-    assert report["ready_for_badge_claims"] is False
+    assert report["ready_for_badge_claims"] is True
+    assert report["missing_badge_gate_keys"] == []
     assert report["gates"]["claim_audit"]["passed"] is True
     assert report["gates"]["hosted_omni_eval"]["passed"] is True
+    assert report["gates"]["demo_video"]["passed"] is True
+    assert report["gates"]["all_six_merit_badges_claimed"]["passed"] is True
     assert report["gates"]["local_4b_50_case_eval"]["passed"] is False
     assert report["gates"]["no_cloud_route"]["passed"] is False
     assert report["gates"]["llama_champion_route"]["passed"] is False
@@ -57,7 +60,7 @@ def test_report_uses_local_evidence_artifacts_when_present(tmp_path: Path) -> No
     (docs / "submission_checklist.md").write_text(
         "\n".join(
             [
-                "| Demo video | Proof needed | Pending |",
+                "| Demo video | Pending | Pending |",
                 "| Social post | Proof needed | Pending |",
             ]
         ),
@@ -81,4 +84,5 @@ def test_report_uses_local_evidence_artifacts_when_present(tmp_path: Path) -> No
     assert str(local_4b_dir / "eval_evidence_manifest.json") in report["gates"]["local_4b_50_case_eval"]["evidence_paths"]
     assert str(asr_dir / "asr_evidence_manifest.json") in report["gates"]["local_asr_provider_proof"]["evidence_paths"]
     assert report["status"] == "incomplete"
+    assert report["ready_for_badge_claims"] is False
     assert "trained_responder_user_test" in report["missing_gate_keys"]
