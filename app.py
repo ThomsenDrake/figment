@@ -14,6 +14,12 @@ from figment.audio_intake import draft_audio_intake as _draft_audio_intake
 from figment.config import FigmentConfig, load_config
 from figment.model_client import ModelClient, ModelClientError, hosted_audio_limits_text, validate_hosted_audio_file
 from figment.navigator import run_navigation
+from figment.parakeet_asr import (
+    ParakeetAsrError,
+    parakeet_audio_limits_text,
+    transcribe_audio_with_parakeet,
+    validate_parakeet_audio_file,
+)
 from figment.retrieval import load_protocol_cards, query_from_intake, retrieval_source_summary, search_protocol_cards
 from figment.rules import evaluate_rules, run_red_flag_checks
 from figment.sbar import render_sbar
@@ -158,6 +164,16 @@ def draft_audio_intake(
                 provider_payload = ModelClient(config).generate_audio_draft(audio_file)
             except ModelClientError as exc:
                 provider_error = f"Hosted Omni audio draft failed; typed transcript or canned fallback required. {exc}"
+    elif audio_file and not transcript.strip() and provider_payload is None and _should_use_parakeet_audio(config):
+        try:
+            validate_parakeet_audio_file(audio_file)
+        except ParakeetAsrError as exc:
+            provider_error = f"Parakeet ASR draft skipped; typed transcript or canned fallback required. {exc}"
+        else:
+            try:
+                provider_payload = transcribe_audio_with_parakeet(audio_file, config=config)
+            except ParakeetAsrError as exc:
+                provider_error = f"Parakeet ASR draft failed; typed transcript or canned fallback required. {exc}"
     draft = _draft_audio_intake(
         transcript=transcript,
         config=config,
@@ -176,6 +192,11 @@ def draft_audio_intake(
             hosted_disclosure = _hosted_audio_disclosure_text()
             draft["hosted_audio_disclosure"] = hosted_disclosure
             retention_note = f"{retention_note} {hosted_disclosure}"
+        elif _should_use_parakeet_audio(config):
+            retention_note = (
+                f"{retention_note} Parakeet ASR runs on the configured local/ZeroGPU runtime; "
+                f"limit: {parakeet_audio_limits_text()}."
+            )
         draft["audio_retention_note"] = retention_note
     if provider_error and draft.get("audio_intake_path") == "audio_received_needs_transcript_or_model":
         draft["processing_status"] = provider_error
@@ -968,7 +989,7 @@ def _audio_section_title(config: FigmentConfig) -> str:
     if config.audio_backend == "omni_native" and config.model_backend == "hosted_omni":
         return "Hosted Omni audio draft"
     if config.audio_backend == "parakeet_nemo":
-        return "Local Parakeet ASR draft"
+        return "Parakeet ASR draft"
     if config.audio_backend == "canned":
         return "Canned audio demo draft"
     return "Audio draft intake"
@@ -983,7 +1004,7 @@ def _audio_section_subtitle(config: FigmentConfig) -> str:
             f"hosted endpoint; use only synthetic or de-identified clips. Limit: {hosted_audio_limits_text()}."
         )
     if config.audio_backend == "parakeet_nemo":
-        return "Use gated local ASR for provisional field suggestions, then confirm fields before rules run."
+        return "Use configured Parakeet ASR for provisional field suggestions, then confirm fields before rules run."
     if config.audio_backend == "canned":
         return "Use canned clips only as repeatable demo input, then confirm fields before rules run."
     return "Draft suggestions are provisional until the confirmed intake form is reviewed."
@@ -1632,6 +1653,15 @@ def _should_use_hosted_omni_audio(config: FigmentConfig) -> bool:
         config.enable_audio_intake
         and config.audio_backend == "omni_native"
         and config.model_backend == "hosted_omni"
+    )
+
+
+def _should_use_parakeet_audio(config: FigmentConfig) -> bool:
+    return (
+        config.enable_audio_intake
+        and config.audio_backend == "parakeet_nemo"
+        and config.allow_local_asr
+        and config.model_stack == "local_4b_parakeet"
     )
 
 

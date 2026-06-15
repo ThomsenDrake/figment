@@ -10,6 +10,7 @@ pinned: false
 python_version: 3.12.12
 preload_from_hub:
   - build-small-hackathon/figment-finetuned-model-archive figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/chat_template.jinja,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/config.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/configuration_nemotron_h.py,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/generation_config.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model-00001-of-00002.safetensors,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model-00002-of-00002.safetensors,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model.safetensors.index.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/modeling_nemotron_h.py,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/special_tokens_map.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/tokenizer.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/tokenizer_config.json
+  - nvidia/parakeet-ctc-1.1b config.json,model.safetensors,preprocessor_config.json,special_tokens_map.json,tokenizer.json,tokenizer_config.json,vocab.json
 ---
 
 # Figment
@@ -24,7 +25,7 @@ Figment turns messy field intake into a card-cited protocol workflow: confirm th
 
 | Surface | Current evidence | What it means | Boundary |
 | --- | --- | --- | --- |
-| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) was `RUNNING` on `zero-a10g` at Space commit `45df7643e9e592f8496214c436532a3ade3cfdfc` on 2026-06-15. A synthetic `/run_navigator` call returned `raw_route=hf_zerogpu`, `fallback_tier=configured`, `field_level_fallback_used=true`, `final_route=model_with_deterministic_patches`, and `validation_status=passed` in 41.87 seconds. | The public Space reaches the published v14p BF16 model archive through HF ZeroGPU and the validator passed on the returned response. | This is one live synthetic route check. Deterministic patches still contributed, so it is live serving proof, not pure model-only competence proof. |
+| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) was `RUNNING` on `zero-a10g` at Space commit `79e487aebc8df11c084a2054152d447cc0838837` on 2026-06-15. A synthetic `/run_navigator` call returned `raw_route=hf_zerogpu`, `fallback_tier=configured`, `field_level_fallback_used=true`, `final_route=model_with_deterministic_patches`, and `validation_status=passed` in 41.87 seconds. A live `/draft_audio` call on a committed demo WAV returned `audio_model_id=nvidia/parakeet-ctc-1.1b`, `audio_intake_path=parakeet_asr_plus_text_nemotron`, `confirmation_status=unconfirmed`, `raw_audio_stored=false`, and 5 draft fields in 5.44 seconds. | The public Space reaches the published v14p BF16 model archive through HF ZeroGPU and uses Parakeet ASR for provisional audio draft intake. | These are live synthetic route checks. Deterministic patches still contributed to navigation, and ASR output still requires human confirmation before rules run. This is not no-cloud/local-ASR proof or clinical validation. |
 | Hosted Omni eval | `31/50` whole-output competence, `8/50` full fallback, `480/650` model-retained fields, `170/650` deterministic patches, and `50/50` final validation. | Hosted Omni can carry bounded fields, and the app can keep outputs inside the safety contract. | `50/50` final validation is app safety after validation, repair, and fallback. It is not pure model performance. |
 | 4B LoRA system eval | v14p repair-union on the corrected 150-case field-workflow holdout: `150/150` competence, `150/150` expected labels, `150/150` final validation, `0` deterministic patches, `0` fallback. Raw first-pass success is `146/150`; `4/150` cases close through focused model repair. | The strongest documented small-model result is model-owned output plus model repair on a synthetic/de-identified holdout. | This is not clinical validation, target-user validation, local ASR proof, or proof that raw first-pass output solved every case. |
 | Public artifacts | [model archive](https://huggingface.co/build-small-hackathon/figment-finetuned-model-archive) and [eval/training dataset](https://huggingface.co/datasets/build-small-hackathon/figment-eval-traces). | Versioned BF16/GGUF model artifacts, synthetic corpora, eval traces, and summaries are inspectable outside this checkout. | Generated `traces/`, `data/finetune/`, weights, and checkpoint folders are intentionally not part of a clean clone. |
@@ -95,12 +96,12 @@ Figment supports four runtime routes:
 | --- | --- | --- |
 | Canned fallback | `MODEL_BACKEND=canned` | No-secret app smoke, UI development, honest fallback traces. |
 | Hosted Omni | `MODEL_BACKEND=hosted_omni` with `NVIDIA_API_KEY` | Live hosted demo and hosted eval path using `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. |
-| HF ZeroGPU v14p | `MODEL_BACKEND=hf_zerogpu` with `ZEROGPU_MODEL_REPO` / `ZEROGPU_MODEL_SUBFOLDER` | Public Space route using the published v14p BF16 merged model on Hugging Face ZeroGPU. |
+| HF ZeroGPU v14p + Parakeet ASR | `MODEL_BACKEND=hf_zerogpu`, `AUDIO_BACKEND=parakeet_nemo`, and `ALLOW_LOCAL_ASR=true` | Public Space route using the published v14p BF16 merged model plus gated Parakeet ASR draft intake on Hugging Face ZeroGPU. |
 | Local OpenAI-compatible | `MODEL_BACKEND=llama_cpp` with `LLAMA_BASE_URL` | Local text-navigation route for the 4B BF16/GGUF artifacts and local evidence bundles. |
 
 The Build Small constraint is <=32B total parameters. The hosted Omni path is tracked with a parameter-count caveat: the NVIDIA model-card body reports 31B total parameters, while sidebar counts have differed. The 4B BF16 base model, `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`, is the local text-navigation training target.
 
-Parakeet ASR remains a gated local-audio path. Artifact presence alone is not enough; local ASR needs provider-output evidence before any local-audio claim is upgraded.
+Parakeet ASR remains evidence-gated. A Space route can use the Transformers-native `nvidia/parakeet-ctc-1.1b` Parakeet model for live audio draft intake; the original local/offline proof path still requires a real provider-output evidence bundle before any no-cloud/local-ASR claim is upgraded.
 
 ## Evaluation
 

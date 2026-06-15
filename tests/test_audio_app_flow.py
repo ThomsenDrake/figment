@@ -306,12 +306,82 @@ def test_local_parakeet_provider_payload_uses_local_4b_runtime_label_when_gated(
         config=config,
     )
 
-    assert draft["audio_intake_path"] == "parakeet_rnnt_plus_text_nemotron"
+    assert draft["audio_intake_path"] == "parakeet_asr_plus_text_nemotron"
     assert draft["audio_runtime"] == "local_4b_parakeet"
     assert draft["audio_model_id"] == "nvidia/parakeet-rnnt-1.1b"
     assert draft["field_fill_model_id"] == "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
     assert draft["transcript_source"] == "local_parakeet_asr_provider"
     assert draft["confirmation_status"] == "unconfirmed"
+
+
+def test_uploaded_audio_uses_parakeet_asr_provider_when_gated(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    audio_path = tmp_path / "field-note.wav"
+    audio_path.write_bytes(b"fake wav bytes")
+    config = FigmentConfig(
+        model_stack="local_4b_parakeet",
+        model_backend="hf_zerogpu",
+        enable_audio_intake=True,
+        audio_backend="parakeet_nemo",
+        allow_local_asr=True,
+    ).validated()
+    seen = {}
+
+    def fake_transcribe_audio_with_parakeet(audio_file, *, config):
+        seen["audio_file"] = audio_file
+        seen["config"] = config
+        return {
+            "transcript": "Local Parakeet transcript says the patient has trouble breathing.",
+            "suggested_fields": [
+                {
+                    "field": "symptoms",
+                    "draft_value": "trouble breathing",
+                    "source_snippet": "trouble breathing",
+                }
+            ],
+            "missing_or_unclear_fields": ["vitals"],
+            "provisional_red_flag_mentions": ["trouble breathing"],
+        }
+
+    monkeypatch.setattr(app, "transcribe_audio_with_parakeet", fake_transcribe_audio_with_parakeet)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert seen["audio_file"] == str(audio_path)
+    assert seen["config"] is config
+    assert draft["audio_intake_path"] == "parakeet_asr_plus_text_nemotron"
+    assert draft["audio_runtime"] == "local_4b_parakeet"
+    assert draft["audio_model_id"] == "nvidia/parakeet-rnnt-1.1b"
+    assert draft["transcript_source"] == "local_parakeet_asr_provider"
+    assert draft["audio_filename"] == "field-note.wav"
+    assert draft["confirmation_status"] == "unconfirmed"
+
+
+def test_uploaded_audio_parakeet_asr_failure_fails_closed(tmp_path, monkeypatch) -> None:
+    app = importlib.import_module("app")
+    audio_path = tmp_path / "field-note.wav"
+    audio_path.write_bytes(b"fake wav bytes")
+    config = FigmentConfig(
+        model_stack="local_4b_parakeet",
+        model_backend="hf_zerogpu",
+        enable_audio_intake=True,
+        audio_backend="parakeet_nemo",
+        allow_local_asr=True,
+    ).validated()
+
+    def failing_transcribe_audio_with_parakeet(_audio_file, *, config):
+        raise app.ParakeetAsrError("decoder unavailable")
+
+    monkeypatch.setattr(app, "transcribe_audio_with_parakeet", failing_transcribe_audio_with_parakeet)
+
+    draft = app.draft_audio_intake(audio_file=str(audio_path), config=config)
+
+    assert draft["audio_intake_path"] == "audio_received_needs_transcript_or_model"
+    assert draft["audio_runtime"] == "unprocessed_audio"
+    assert draft["suggested_fields"] == []
+    assert "parakeet asr draft failed" in draft["processing_status"].lower()
+    assert draft["audio_filename"] == "field-note.wav"
+    assert draft["raw_audio_stored"] is False
 
 
 def test_typed_transcript_under_parakeet_config_stays_heuristic_not_asr() -> None:

@@ -12,6 +12,7 @@ OMNI_FP8_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID = "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
 PARAKEET_ASR_MODEL_ID = "nvidia/parakeet-rnnt-1.1b"
+PARAKEET_TRANSFORMERS_CTC_MODEL_ID = "nvidia/parakeet-ctc-1.1b"
 NVIDIA_OMNI_API_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 NVIDIA_API_BASE_URL = "https://integrate.api.nvidia.com/v1"
 FIGMENT_CANNED_MODEL_ID = "figment-canned-deterministic"
@@ -91,6 +92,8 @@ class FigmentConfig:
     llama_base_url: str = "http://127.0.0.1:8001/v1"
     zerogpu_model_repo: str = FIGMENT_V14P_MODEL_REPO
     zerogpu_model_subfolder: str = FIGMENT_V14P_MODEL_SUBFOLDER
+    parakeet_asr_model_id: str = PARAKEET_ASR_MODEL_ID
+    parakeet_asr_runtime: str = "auto"
     trace_dir: Path = Path("traces")
 
     @classmethod
@@ -156,6 +159,9 @@ class FigmentConfig:
             or FIGMENT_V14P_MODEL_REPO,
             zerogpu_model_subfolder=os.getenv("ZEROGPU_MODEL_SUBFOLDER", FIGMENT_V14P_MODEL_SUBFOLDER).strip()
             or FIGMENT_V14P_MODEL_SUBFOLDER,
+            parakeet_asr_model_id=os.getenv("PARAKEET_ASR_MODEL_ID", PARAKEET_ASR_MODEL_ID).strip()
+            or PARAKEET_ASR_MODEL_ID,
+            parakeet_asr_runtime=os.getenv("PARAKEET_ASR_RUNTIME", "auto").strip().lower() or "auto",
             trace_dir=Path(os.getenv("FIGMENT_TRACE_DIR", "traces").strip() or "traces"),
         ).validated()
 
@@ -179,6 +185,8 @@ class FigmentConfig:
             errors.append("AUDIO_BACKEND=parakeet_nemo requires ALLOW_LOCAL_ASR=true")
         if self.audio_backend == "parakeet_nemo" and self.model_stack != "local_4b_parakeet":
             errors.append("AUDIO_BACKEND=parakeet_nemo requires MODEL_STACK=local_4b_parakeet")
+        if self.parakeet_asr_runtime not in {"auto", "nemo", "transformers"}:
+            errors.append("PARAKEET_ASR_RUNTIME must be one of ['auto', 'nemo', 'transformers']")
         errors.extend(
             _mode_consistency_errors(
                 self.figment_mode,
@@ -211,7 +219,7 @@ class FigmentConfig:
         if self.audio_backend == "omni_native":
             return OMNI_MODEL_ID
         if self.audio_backend == "parakeet_nemo":
-            return PARAKEET_ASR_MODEL_ID
+            return self.parakeet_asr_model_id
         return None
 
     @property

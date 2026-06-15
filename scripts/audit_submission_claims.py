@@ -230,7 +230,10 @@ def _has_well_tuned_evidence(repo_root: Path) -> bool:
         and "figment_sft_v14p" in lowered
         and "v14p repair-union" in lowered
         and "150/150 competence" in lowered
-        and "do not imply the public no-secret space is serving" in lowered
+        and (
+            "do not imply the public no-secret space is serving" in lowered
+            or "keep deterministic patch use visible when citing public space route checks" in lowered
+        )
         and "not trained, published, or measured" not in lowered
     )
 

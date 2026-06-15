@@ -91,6 +91,30 @@ def test_env_config_zerogpu_backend_defaults_to_v14p(monkeypatch: pytest.MonkeyP
     assert config.active_model_id == "figment-sft-v14p-lora-merged-bf16"
 
 
+def test_env_config_parakeet_asr_can_use_transformers_model_on_zerogpu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIGMENT_MODE", "hosted")
+    monkeypatch.setenv("MODEL_BACKEND", "hf_zerogpu")
+    monkeypatch.setenv("AUDIO_BACKEND", "parakeet_nemo")
+    monkeypatch.setenv("ENABLE_AUDIO_INTAKE", "true")
+    monkeypatch.setenv("ALLOW_LOCAL_ASR", "true")
+    monkeypatch.setenv("PARAKEET_ASR_MODEL_ID", "nvidia/parakeet-ctc-1.1b")
+    monkeypatch.setenv("PARAKEET_ASR_RUNTIME", "transformers")
+
+    config = FigmentConfig.from_env()
+
+    assert config.model_backend == "hf_zerogpu"
+    assert config.audio_backend == "parakeet_nemo"
+    assert config.enable_audio_intake is True
+    assert config.allow_local_asr is True
+    assert config.parakeet_asr_model_id == "nvidia/parakeet-ctc-1.1b"
+    assert config.parakeet_asr_runtime == "transformers"
+    assert config.audio_model_id == "nvidia/parakeet-ctc-1.1b"
+
+
 @pytest.mark.parametrize(
     ("model_route", "events", "expected_final_route"),
     [

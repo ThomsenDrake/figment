@@ -82,6 +82,56 @@ def test_asr_evidence_provider_payload_can_pass_gated_draft_checks(tmp_path: Pat
     assert manifest["raw_audio_handling"]["raw_audio_stored"] is False
 
 
+def test_asr_evidence_can_generate_provider_payload_from_audio(tmp_path: Path, monkeypatch) -> None:
+    artifact_path = tmp_path / "parakeet-rnnt-1.1b.nemo"
+    artifact_path.write_bytes(b"fake parakeet")
+    monkeypatch.setattr(run_local_asr_evidence, "PARAKEET_NEMO_PATH", artifact_path)
+    monkeypatch.setattr(run_local_asr_evidence, "PARAKEET_NEMO_BYTES", len(b"fake parakeet"))
+    monkeypatch.setattr(
+        run_local_asr_evidence,
+        "PARAKEET_NEMO_SHA256",
+        run_local_asr_evidence._sha256(artifact_path),
+    )
+    audio_path = tmp_path / "source.wav"
+    with wave.open(str(audio_path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b"\0\0" * 16000)
+
+    seen = {}
+
+    def fake_transcribe_audio_with_parakeet(audio_file, *, config):
+        seen["audio_file"] = audio_file
+        seen["config"] = config
+        return {
+            "transcript": "Local Parakeet transcript says the patient has trouble breathing.",
+            "suggested_fields": [
+                {
+                    "field": "symptoms",
+                    "draft_value": "trouble breathing",
+                    "source_snippet": "trouble breathing",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(run_local_asr_evidence, "transcribe_audio_with_parakeet", fake_transcribe_audio_with_parakeet)
+
+    summary = run_local_asr_evidence.run_evidence(
+        output_dir=tmp_path / "evidence",
+        audio_path=audio_path,
+        transcribe_audio=True,
+    )
+
+    assert seen["audio_file"] == str(audio_path)
+    assert seen["config"].audio_backend == "parakeet_nemo"
+    assert summary["status"] == "local_asr_proof_passed"
+    assert summary["provider_payload_path"] == str(tmp_path / "evidence" / "provider_payload.json")
+    provider_payload = json.loads((tmp_path / "evidence" / "provider_payload.json").read_text(encoding="utf-8"))
+    assert provider_payload["transcript"].startswith("Local Parakeet transcript")
+    assert summary["counts_as_local_asr_proof"] is True
+
+
 def test_asr_evidence_audio_metadata_hashes_without_copying_audio(tmp_path: Path, monkeypatch) -> None:
     artifact_path = tmp_path / "parakeet-rnnt-1.1b.nemo"
     artifact_path.write_bytes(b"fake parakeet")

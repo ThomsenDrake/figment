@@ -495,7 +495,7 @@ Audio field-fill suggestions are a separate pre-navigation object and do **not**
 ```json
 {
   "task": "audio_intake_draft",
-  "audio_intake_path": "omni_native | canned_audio_demo | typed_only | audio_received_needs_transcript_or_model | parakeet_rnnt_plus_text_nemotron",
+  "audio_intake_path": "omni_native | canned_audio_demo | typed_only | audio_received_needs_transcript_or_model | parakeet_asr_plus_text_nemotron",
   "audio_model_id": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 | nvidia/parakeet-rnnt-1.1b",
   "field_fill_model_id": null,
   "audio_runtime": "omni_native | hosted_omni | parakeet_nemo | canned | none | unprocessed_audio",

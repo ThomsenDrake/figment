@@ -16,7 +16,6 @@ from .config import (
     FigmentConfig,
     NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
     OMNI_MODEL_ID,
-    PARAKEET_ASR_MODEL_ID,
     load_config,
 )
 from .schemas import AudioDraft, AudioFieldSuggestion
@@ -24,7 +23,7 @@ from .schemas import AudioDraft, AudioFieldSuggestion
 
 LOCAL_PARAKEET_AUDIO_BACKENDS = {"parakeet_nemo", "local_4b_parakeet"}
 LOCAL_PARAKEET_RUNTIME = "local_4b_parakeet"
-LOCAL_PARAKEET_PATH = "parakeet_rnnt_plus_text_nemotron"
+LOCAL_PARAKEET_PATH = "parakeet_asr_plus_text_nemotron"
 DEMO_AUDIO_MANIFEST_PATH = Path(__file__).resolve().parents[1] / "data" / "demo_audio" / "manifest.json"
 ALLOWED_AUDIO_SUGGESTION_FIELDS = {
     "setting",
@@ -211,7 +210,7 @@ def draft_audio_intake(
         audio_model_id = OMNI_MODEL_ID
         draft_source = "omni_audio_provider"
     elif provider_payload_used and audio_enabled and _is_local_parakeet_backend(config):
-        audio_model_id = PARAKEET_ASR_MODEL_ID
+        audio_model_id = config.audio_model_id
         field_fill_model_id = _local_field_fill_model_id(config)
         runtime = LOCAL_PARAKEET_RUNTIME
         path = LOCAL_PARAKEET_PATH

@@ -23,6 +23,7 @@ from figment.config import (  # noqa: E402
     NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
     PARAKEET_ASR_MODEL_ID,
 )
+from figment.parakeet_asr import transcribe_audio_with_parakeet  # noqa: E402
 
 
 PARAKEET_REPO = "nvidia/parakeet-rnnt-1.1b"
@@ -42,6 +43,7 @@ def run_evidence(
     provider_payload_path: Path | None = None,
     audio_path: Path | None = None,
     provider_note: str = "",
+    transcribe_audio: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     artifact = _artifact_summary()
@@ -64,6 +66,21 @@ def run_evidence(
         "counts_as_local_asr_artifact": bool(artifact["present"]),
         "counts_as_local_asr_proof": False,
     }
+    config = FigmentConfig(
+        figment_mode="local",
+        model_stack="local_4b_parakeet",
+        model_backend="llama_cpp",
+        audio_backend="parakeet_nemo",
+        enable_audio_intake=True,
+        allow_local_asr=True,
+        local_model_id=NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
+    ).validated()
+    if artifact["present"] and provider_payload_path is None and audio_path is not None and transcribe_audio:
+        provider_payload = transcribe_audio_with_parakeet(str(audio_path), config=config)
+        provider_payload_path = output_dir / "provider_payload.json"
+        _write_json(provider_payload_path, provider_payload)
+        summary["provider_payload_path"] = str(provider_payload_path)
+
     if not artifact["present"] or provider_payload_path is None:
         _write_json(
             output_dir / "asr_evidence_manifest.json",
@@ -74,6 +91,7 @@ def run_evidence(
                 draft=None,
                 checks=None,
                 provider_note=provider_note,
+                config=config,
             ),
         )
         _write_json(output_dir / "summary.json", summary)
@@ -83,15 +101,6 @@ def run_evidence(
     provider_payload_metadata = _provider_payload_metadata(provider_payload_path)
     _write_json(output_dir / "provider_payload_metadata.json", provider_payload_metadata)
 
-    config = FigmentConfig(
-        figment_mode="local",
-        model_stack="local_4b_parakeet",
-        model_backend="llama_cpp",
-        audio_backend="parakeet_nemo",
-        enable_audio_intake=True,
-        allow_local_asr=True,
-        local_model_id=NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
-    ).validated()
     draft = draft_audio_intake(config=config, provider_payload=provider_payload)
     draft_path = output_dir / "audio_draft.json"
     _write_json(draft_path, draft)
@@ -181,7 +190,7 @@ def _draft_checks(draft: dict[str, Any]) -> dict[str, Any]:
     checks = {
         "has_transcript": bool(str(draft.get("transcript", "")).strip()),
         "has_suggested_fields": bool(draft.get("suggested_fields")),
-        "audio_intake_path_is_parakeet": draft.get("audio_intake_path") == "parakeet_rnnt_plus_text_nemotron",
+        "audio_intake_path_is_parakeet": draft.get("audio_intake_path") == "parakeet_asr_plus_text_nemotron",
         "audio_runtime_is_local_4b": draft.get("audio_runtime") == "local_4b_parakeet",
         "audio_model_is_parakeet": draft.get("audio_model_id") == PARAKEET_ASR_MODEL_ID,
         "field_fill_model_is_4b": draft.get("field_fill_model_id") == NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
@@ -300,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-payload", type=Path, default=None)
     parser.add_argument("--audio", type=Path, default=None, help="Optional source audio path; metadata only, not copied.")
+    parser.add_argument("--transcribe-audio", action="store_true", help="Run Parakeet ASR on --audio to create provider_payload.json.")
     parser.add_argument("--provider-note", default="")
     parser.add_argument("--output-dir", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -309,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         provider_payload_path=args.provider_payload,
         audio_path=args.audio,
         provider_note=args.provider_note,
+        transcribe_audio=args.transcribe_audio,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
     if summary["counts_as_local_asr_proof"]:
