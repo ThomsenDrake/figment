@@ -344,7 +344,7 @@ def _app_header_html() -> str:
 
 def _statusline_html(config: FigmentConfig) -> str:
     audio_chip = "green" if config.enable_audio_intake else "amber"
-    backend_chip = "blue" if config.model_backend == "hosted_omni" else "amber"
+    backend_chip = "blue" if config.model_backend in {"hosted_omni", "hf_zerogpu"} else "amber"
     return f"""
     <div class="figment-statusline">
       <strong>Runtime</strong>
@@ -955,6 +955,8 @@ __FIGMENT_CSS__
 def _model_mode_label(config: FigmentConfig) -> str:
     if config.model_backend == "hosted_omni":
         return "Configured backend: hosted_omni"
+    if config.model_backend == "hf_zerogpu":
+        return "Configured backend: hf_zerogpu"
     if config.model_backend == "llama_cpp":
         return "Configured backend: llama_cpp"
     return "Configured backend: canned"

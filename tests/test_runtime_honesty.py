@@ -12,10 +12,12 @@ CONFIG_ENV_KEYS = (
     "MODEL_STACK",
     "MODEL_BACKEND",
     "AUDIO_BACKEND",
-        "ENABLE_AUDIO_INTAKE",
-        "ALLOW_LOCAL_ASR",
-        "ALLOW_SELF_HOSTED_OMNI",
-        "ALLOW_STRETCH_STACK",
+    "ENABLE_AUDIO_INTAKE",
+    "ALLOW_LOCAL_ASR",
+    "ALLOW_SELF_HOSTED_OMNI",
+    "ALLOW_STRETCH_STACK",
+    "ZEROGPU_MODEL_REPO",
+    "ZEROGPU_MODEL_SUBFOLDER",
     "HF_MODEL_ID",
     "NVIDIA_MODEL_ID",
     "NVIDIA_BASE_URL",
@@ -73,10 +75,27 @@ def test_env_config_allows_explicit_local_self_hosted_omni(monkeypatch: pytest.M
     assert config.active_model_id == "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"
 
 
+def test_env_config_zerogpu_backend_defaults_to_v14p(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIGMENT_MODE", "hosted")
+    monkeypatch.setenv("MODEL_BACKEND", "hf_zerogpu")
+
+    config = FigmentConfig.from_env()
+
+    assert config.model_backend == "hf_zerogpu"
+    assert config.model_stack == "local_4b_parakeet"
+    assert config.local_model_id == "figment-sft-v14p-lora-merged-bf16"
+    assert config.zerogpu_model_repo == "build-small-hackathon/figment-finetuned-model-archive"
+    assert config.zerogpu_model_subfolder == "figment_sft_v14p/figment-sft-v14p-lora-merged-bf16"
+    assert config.active_model_id == "figment-sft-v14p-lora-merged-bf16"
+
+
 @pytest.mark.parametrize(
     ("model_route", "events", "expected_final_route"),
     [
         ({"model_backend": "hosted_omni", "fallback_reason": None}, [], "live_model_generated"),
+        ({"model_backend": "hf_zerogpu", "fallback_reason": None}, [], "live_model_generated"),
         ({"model_backend": "hosted_omni", "fallback_reason": None}, ["navigator output repaired by hosted retry"], "model_repaired"),
         (
             {"model_backend": "hosted_omni", "fallback_reason": None, "field_level_fallback_used": True},

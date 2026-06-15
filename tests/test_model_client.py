@@ -6,7 +6,7 @@ from figment import config as config_module
 from figment.config import FigmentConfig
 import pytest
 
-from figment.model_client import ModelClient, ModelClientError
+from figment.model_client import ModelClient, ModelClientError, _zero_gpu_compact_prompt
 
 
 EXPECTED_NVIDIA_OMNI_API_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
@@ -143,6 +143,87 @@ def test_local_llama_cpp_uses_local_base_url_without_hosted_auth(monkeypatch: An
     assert captured["url"] == "http://127.0.0.1:8001/v1/chat/completions"
     assert captured["authorization"] is None
     assert captured["body"]["model"] == "local-test-model"
+
+
+def test_hf_zerogpu_backend_uses_published_v14p_runtime(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_generate_zero_gpu_json(*, prompt: str, model_repo: str, model_subfolder: str, model_id: str) -> dict[str, Any]:
+        captured["prompt"] = prompt
+        captured["model_repo"] = model_repo
+        captured["model_subfolder"] = model_subfolder
+        captured["model_id"] = model_id
+        return {"protocol_urgency": "monitor", "source_cards": []}
+
+    monkeypatch.setattr("figment.model_client.generate_zero_gpu_json", fake_generate_zero_gpu_json)
+
+    client = ModelClient(
+        FigmentConfig(
+            model_backend="hf_zerogpu",
+            model_stack="local_4b_parakeet",
+            local_model_id="figment-sft-v14p-lora-merged-bf16",
+            zerogpu_model_repo="build-small-hackathon/figment-finetuned-model-archive",
+            zerogpu_model_subfolder="figment_sft_v14p/figment-sft-v14p-lora-merged-bf16",
+        )
+    )
+    result = client.generate_json("Return JSON.", {})
+
+    assert result["protocol_urgency"] == "monitor"
+    assert captured == {
+        "prompt": "Return JSON.",
+        "model_repo": "build-small-hackathon/figment-finetuned-model-archive",
+        "model_subfolder": "figment_sft_v14p/figment-sft-v14p-lora-merged-bf16",
+        "model_id": "figment-sft-v14p-lora-merged-bf16",
+    }
+
+
+def test_hf_zerogpu_compact_prompt_preserves_route_facts_without_verbose_card_text() -> None:
+    prompt = "VERBOSE " * 5000
+    compact = _zero_gpu_compact_prompt(
+        prompt,
+        {
+            "intake": {"confirmed": True, "chief_concern": "vomiting"},
+            "rule_results": [],
+            "urgency_floor": "routine",
+            "retrieved_cards": [
+                {
+                    "card": {
+                        "card_id": "PED-DEHYD-RED-FLAGS-v1",
+                        "title": "Pediatric dehydration red flags",
+                        "required_observations": ["mental status", "urine output"],
+                        "red_flags": ["lethargy"],
+                        "escalation_criteria": ["Any listed red flag requires urgent escalation."],
+                        "source_note": "omit this verbose provenance field",
+                    }
+                }
+            ],
+        },
+    )
+
+    assert len(compact) < 3000
+    assert "PED-DEHYD-RED-FLAGS-v1" in compact
+    assert "chief_concern" in compact
+    assert "REQUIRED_JSON_SKELETON" in compact
+    assert "required_keys" in compact
+    assert "source_note" not in compact
+    assert "VERBOSE" not in compact
+
+
+def test_hf_zerogpu_backend_wraps_invalid_model_json(monkeypatch: Any) -> None:
+    def fake_generate_zero_gpu_json(**_: Any) -> dict[str, Any]:
+        raise json.JSONDecodeError("bad", "not json", 0)
+
+    monkeypatch.setattr("figment.model_client.generate_zero_gpu_json", fake_generate_zero_gpu_json)
+    client = ModelClient(
+        FigmentConfig(
+            model_backend="hf_zerogpu",
+            model_stack="local_4b_parakeet",
+            local_model_id="figment-sft-v14p-lora-merged-bf16",
+        )
+    )
+
+    with pytest.raises(ModelClientError, match="hf_zerogpu backend failed"):
+        client.generate_json("Return JSON.", {"intake": {}, "retrieved_cards": []})
 
 
 def test_custom_hf_endpoint_prefers_hf_token_over_nvidia_key(monkeypatch: Any) -> None:

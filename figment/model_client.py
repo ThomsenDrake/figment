@@ -15,6 +15,8 @@ import wave
 from typing import Any
 
 from .config import FigmentConfig, load_config
+from .prompt_builder import OUTPUT_SCHEMA, REQUIRED_JSON_SKELETON
+from .zerogpu_runtime import generate_zero_gpu_json
 
 
 class ModelClientError(RuntimeError):
@@ -126,6 +128,16 @@ class ModelClient:
                 model_id=self.config.local_model_id,
                 auth_headers={},
             )
+        if self.config.model_backend == "hf_zerogpu":
+            try:
+                return generate_zero_gpu_json(
+                    prompt=_zero_gpu_compact_prompt(prompt, context),
+                    model_repo=self.config.zerogpu_model_repo,
+                    model_subfolder=self.config.zerogpu_model_subfolder,
+                    model_id=self.config.local_model_id,
+                )
+            except (json.JSONDecodeError, RuntimeError, ValueError) as exc:
+                raise ModelClientError(f"hf_zerogpu backend failed for {self.config.local_model_id}") from exc
         if self.config.model_backend == "hosted_omni":
             endpoint = self.config.omni_endpoint_url or self.config.hf_endpoint_url or self.config.nvidia_base_url
             if not endpoint:
@@ -239,6 +251,44 @@ class ModelClient:
         if self.config.hf_token:
             return {"Authorization": f"Bearer {self.config.hf_token}"}
         return {}
+
+
+ZERO_GPU_SYSTEM_PROMPT = """You are Figment, an offline protocol navigator for a trained responder.
+Use ONLY the compact protocol-card facts in CONTEXT. Return exactly one valid JSON object, with no markdown, prose, or comments.
+The object must follow REQUIRED_JSON_SKELETON and include every required key.
+Do not diagnose, prescribe, dose medication, autonomously triage, discharge, or downgrade deterministic red flags.
+Every candidate_protocol_pathways item must cite a retrieved clinical card_id. source_cards must cite every card used.
+If information is missing or uncertain, list it instead of inventing it."""
+
+
+def _zero_gpu_compact_prompt(prompt: str, context: dict[str, Any]) -> str:
+    if not context:
+        return prompt
+    compact_context = {
+        "intake": context.get("intake", {}),
+        "red_flags": context.get("rule_results", []),
+        "urgency_floor": context.get("urgency_floor", "routine"),
+        "retrieved_protocol_cards": [
+            _compact_protocol_card(item.get("card", item)) for item in context.get("retrieved_cards", [])[:3]
+        ],
+        "required_keys": list(OUTPUT_SCHEMA),
+    }
+    return (
+        f"{ZERO_GPU_SYSTEM_PROMPT}\n\n"
+        f"REQUIRED_JSON_SKELETON:\n{json.dumps(REQUIRED_JSON_SKELETON, sort_keys=True, separators=(',', ':'))}\n\n"
+        f"CONTEXT:\n{json.dumps(compact_context, sort_keys=True, separators=(',', ':'))}"
+    )
+
+
+def _compact_protocol_card(card: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "card_id": card.get("card_id"),
+        "title": card.get("title"),
+        "required_observations": list(card.get("required_observations", []))[:3],
+        "red_flags": list(card.get("red_flags", []))[:3],
+        "escalation_criteria": list(card.get("escalation_criteria", []))[:1],
+        "local_actions": list(card.get("local_actions", []))[:2],
+    }
 
 
 def _timeout_seconds_from_env() -> float:

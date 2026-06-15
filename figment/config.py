@@ -15,9 +15,12 @@ PARAKEET_ASR_MODEL_ID = "nvidia/parakeet-rnnt-1.1b"
 NVIDIA_OMNI_API_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 NVIDIA_API_BASE_URL = "https://integrate.api.nvidia.com/v1"
 FIGMENT_CANNED_MODEL_ID = "figment-canned-deterministic"
+FIGMENT_V14P_MODEL_REPO = "build-small-hackathon/figment-finetuned-model-archive"
+FIGMENT_V14P_MODEL_SUBFOLDER = "figment_sft_v14p/figment-sft-v14p-lora-merged-bf16"
+FIGMENT_V14P_MODEL_ID = "figment-sft-v14p-lora-merged-bf16"
 
 MODEL_STACKS = {"omni_native", "local_4b_parakeet"}
-MODEL_BACKENDS = {"hosted_omni", "llama_cpp", "canned"}
+MODEL_BACKENDS = {"hosted_omni", "llama_cpp", "hf_zerogpu", "canned"}
 AUDIO_BACKENDS = {"omni_native", "parakeet_nemo", "canned", "none"}
 FIGMENT_MODES = {"hosted", "local", "canned"}
 
@@ -86,6 +89,8 @@ class FigmentConfig:
     omni_endpoint_url: str = ""
     hf_endpoint_url: str = ""
     llama_base_url: str = "http://127.0.0.1:8001/v1"
+    zerogpu_model_repo: str = FIGMENT_V14P_MODEL_REPO
+    zerogpu_model_subfolder: str = FIGMENT_V14P_MODEL_SUBFOLDER
     trace_dir: Path = Path("traces")
 
     @classmethod
@@ -109,7 +114,7 @@ class FigmentConfig:
             backend = {"hosted": "hosted_omni", "local": "llama_cpp", "canned": "canned"}[backend]
         stack = os.getenv("MODEL_STACK", "").strip()
         if not stack:
-            stack = "local_4b_parakeet" if backend == "llama_cpp" else "omni_native"
+            stack = "local_4b_parakeet" if backend in {"llama_cpp", "hf_zerogpu"} else "omni_native"
         audio = os.getenv("AUDIO_BACKEND", "none").strip() or "none"
         allow_self_hosted_omni = _bool_env(os.getenv("ALLOW_SELF_HOSTED_OMNI"), False)
         mode_errors = _mode_consistency_errors(
@@ -139,11 +144,18 @@ class FigmentConfig:
             nvidia_api_key=nvidia_api_key,
             nvidia_base_url=os.getenv("NVIDIA_BASE_URL", NVIDIA_API_BASE_URL).strip() or NVIDIA_API_BASE_URL,
             nvidia_model_id=os.getenv("NVIDIA_MODEL_ID", NVIDIA_OMNI_API_MODEL_ID).strip() or NVIDIA_OMNI_API_MODEL_ID,
-            local_model_id=os.getenv("LOCAL_MODEL_ID", NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID).strip()
-            or NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
+            local_model_id=os.getenv(
+                "LOCAL_MODEL_ID",
+                FIGMENT_V14P_MODEL_ID if backend == "hf_zerogpu" else NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID,
+            ).strip()
+            or (FIGMENT_V14P_MODEL_ID if backend == "hf_zerogpu" else NVIDIA_NEMOTRON_3_NANO_4B_BF16_MODEL_ID),
             omni_endpoint_url=omni_endpoint_url,
             hf_endpoint_url=hf_endpoint_url,
             llama_base_url=os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8001/v1").strip(),
+            zerogpu_model_repo=os.getenv("ZEROGPU_MODEL_REPO", FIGMENT_V14P_MODEL_REPO).strip()
+            or FIGMENT_V14P_MODEL_REPO,
+            zerogpu_model_subfolder=os.getenv("ZEROGPU_MODEL_SUBFOLDER", FIGMENT_V14P_MODEL_SUBFOLDER).strip()
+            or FIGMENT_V14P_MODEL_SUBFOLDER,
             trace_dir=Path(os.getenv("FIGMENT_TRACE_DIR", "traces").strip() or "traces"),
         ).validated()
 
@@ -159,6 +171,8 @@ class FigmentConfig:
             errors.append("MODEL_BACKEND=hosted_text_nemotron is retired; use MODEL_BACKEND=llama_cpp for local_4b_parakeet")
         elif self.model_backend not in MODEL_BACKENDS:
             errors.append(f"MODEL_BACKEND must be one of {sorted(MODEL_BACKENDS)}")
+        if self.model_backend == "hf_zerogpu" and self.model_stack != "local_4b_parakeet":
+            errors.append("MODEL_BACKEND=hf_zerogpu requires MODEL_STACK=local_4b_parakeet")
         if self.audio_backend not in AUDIO_BACKENDS:
             errors.append(f"AUDIO_BACKEND must be one of {sorted(AUDIO_BACKENDS)}")
         if self.audio_backend == "parakeet_nemo" and not self.allow_local_asr:
@@ -188,7 +202,7 @@ class FigmentConfig:
     def active_model_id(self) -> str:
         if self.model_backend == "hosted_omni":
             return self.nvidia_model_id
-        if self.model_backend == "llama_cpp" or self.model_stack == "local_4b_parakeet":
+        if self.model_backend in {"llama_cpp", "hf_zerogpu"} or self.model_stack == "local_4b_parakeet":
             return self.local_model_id
         return FIGMENT_CANNED_MODEL_ID
 

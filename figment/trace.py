@@ -135,7 +135,7 @@ def _derive_final_route(
         return "model_repaired"
     if fallback_tier == "canned":
         return "canned_backend"
-    if raw_route in {"hosted_omni", "llama_cpp"}:
+    if raw_route in {"hosted_omni", "llama_cpp", "hf_zerogpu"}:
         return "live_model_generated"
     return raw_route or "unknown"
 

@@ -7,7 +7,9 @@ sdk: gradio
 sdk_version: 6.17.3
 app_file: app.py
 pinned: false
-python_version: 3.11
+python_version: 3.12.12
+preload_from_hub:
+  - build-small-hackathon/figment-finetuned-model-archive figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/chat_template.jinja,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/config.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/configuration_nemotron_h.py,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/generation_config.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model-00001-of-00002.safetensors,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model-00002-of-00002.safetensors,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/model.safetensors.index.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/modeling_nemotron_h.py,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/special_tokens_map.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/tokenizer.json,figment_sft_v14p/figment-sft-v14p-lora-merged-bf16/tokenizer_config.json
 ---
 
 # Figment
@@ -22,7 +24,7 @@ Figment turns messy field intake into a card-cited protocol workflow: confirm th
 
 | Surface | Current evidence | What it means | Boundary |
 | --- | --- | --- | --- |
-| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) is `RUNNING` and served HTTP 200 when checked on 2026-06-14 at Space commit `ea4d971be2b8d4e1841648e5a9adc5142d16a299`. | The Gradio app is deployable and reachable. | The public no-secret route may use the labeled canned fallback; that is deployment proof, not live hosted-model proof. |
+| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) was `RUNNING` on `zero-a10g` at Space commit `45df7643e9e592f8496214c436532a3ade3cfdfc` on 2026-06-15. A synthetic `/run_navigator` call returned `raw_route=hf_zerogpu`, `fallback_tier=configured`, `field_level_fallback_used=true`, `final_route=model_with_deterministic_patches`, and `validation_status=passed` in 41.87 seconds. | The public Space reaches the published v14p BF16 model archive through HF ZeroGPU and the validator passed on the returned response. | This is one live synthetic route check. Deterministic patches still contributed, so it is live serving proof, not pure model-only competence proof. |
 | Hosted Omni eval | `31/50` whole-output competence, `8/50` full fallback, `480/650` model-retained fields, `170/650` deterministic patches, and `50/50` final validation. | Hosted Omni can carry bounded fields, and the app can keep outputs inside the safety contract. | `50/50` final validation is app safety after validation, repair, and fallback. It is not pure model performance. |
 | 4B LoRA system eval | v14p repair-union on the corrected 150-case field-workflow holdout: `150/150` competence, `150/150` expected labels, `150/150` final validation, `0` deterministic patches, `0` fallback. Raw first-pass success is `146/150`; `4/150` cases close through focused model repair. | The strongest documented small-model result is model-owned output plus model repair on a synthetic/de-identified holdout. | This is not clinical validation, target-user validation, local ASR proof, or proof that raw first-pass output solved every case. |
 | Public artifacts | [model archive](https://huggingface.co/build-small-hackathon/figment-finetuned-model-archive) and [eval/training dataset](https://huggingface.co/datasets/build-small-hackathon/figment-eval-traces). | Versioned BF16/GGUF model artifacts, synthetic corpora, eval traces, and summaries are inspectable outside this checkout. | Generated `traces/`, `data/finetune/`, weights, and checkpoint folders are intentionally not part of a clean clone. |
@@ -69,7 +71,7 @@ app.py
   -> figment/rules.py              deterministic danger-sign rules
   -> figment/retrieval.py          local protocol-card retrieval
   -> figment/prompt_builder.py     bounded navigator prompt
-  -> figment/model_client.py       hosted Omni, local OpenAI-compatible, or canned route
+  -> figment/model_client.py       hosted Omni, HF ZeroGPU, local OpenAI-compatible, or canned route
   -> figment/navigator.py          raw output, scaffold, repair, fallback orchestration
   -> figment/validators.py         schema, citations, urgency floor, safety checks
   -> figment/field_provenance.py   model_raw / model_repaired / deterministic_fallback labels
@@ -87,12 +89,13 @@ The safety pattern is deliberate:
 
 ## Models
 
-Figment supports three runtime routes:
+Figment supports four runtime routes:
 
 | Route | Backend | Use |
 | --- | --- | --- |
 | Canned fallback | `MODEL_BACKEND=canned` | No-secret app smoke, UI development, honest fallback traces. |
 | Hosted Omni | `MODEL_BACKEND=hosted_omni` with `NVIDIA_API_KEY` | Live hosted demo and hosted eval path using `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. |
+| HF ZeroGPU v14p | `MODEL_BACKEND=hf_zerogpu` with `ZEROGPU_MODEL_REPO` / `ZEROGPU_MODEL_SUBFOLDER` | Public Space route using the published v14p BF16 merged model on Hugging Face ZeroGPU. |
 | Local OpenAI-compatible | `MODEL_BACKEND=llama_cpp` with `LLAMA_BASE_URL` | Local text-navigation route for the 4B BF16/GGUF artifacts and local evidence bundles. |
 
 The Build Small constraint is <=32B total parameters. The hosted Omni path is tracked with a parameter-count caveat: the NVIDIA model-card body reports 31B total parameters, while sidebar counts have differed. The 4B BF16 base model, `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`, is the local text-navigation training target.
