@@ -224,9 +224,14 @@ def _has_no_cloud_evidence(repo_root: Path) -> bool:
 
 def _has_well_tuned_evidence(repo_root: Path) -> bool:
     ledger = (repo_root / "docs/model_parameter_evidence_ledger.md").read_text(encoding="utf-8")
+    lowered = ledger.lower()
     return (
-        "published fine-tuned model" in ledger.lower()
-        and "not trained, published, or measured" not in ledger.lower()
+        "build-small-hackathon/figment-finetuned-model-archive" in lowered
+        and "figment_sft_v14p" in lowered
+        and "v14p repair-union" in lowered
+        and "150/150 competence" in lowered
+        and "do not imply the public no-secret space is serving" in lowered
+        and "not trained, published, or measured" not in lowered
     )
 
 

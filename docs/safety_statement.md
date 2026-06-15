@@ -1,6 +1,6 @@
 # Figment Safety Statement
 
-Status: submission-ready draft. Update the evidence links before final submission; do not turn pending items into claims until the artifacts exist.
+Status: submission-ready draft. Evidence links refreshed 2026-06-15; do not turn pending items into claims until the artifacts exist.
 
 ## Intended Use
 
@@ -45,18 +45,21 @@ Achieved in-repo artifacts:
 - hosted NVIDIA Omni client path and labeled canned fallback path;
 - trace and validator surfaces for review;
 - synthetic demo-audio asset path;
+- public Hugging Face Space cold boot with app files present at commit `94cbe85db8d4b766d7c6a59dfee7071fe98e9a3f`;
+- published 4B LoRA model archive and eval/training dataset repo;
+- measured v14p repair-union result on the corrected 150-case field-workflow holdout: 150/150 competence, 150/150 expected labels, 150/150 final validation, 0 deterministic patches, and 0 fallback;
+- hosted Omni follow-up eval: 31/50 whole-output competence, 8/50 full fallback, 480/650 model-retained fields, 170/650 deterministic patches, and 50/50 final validation;
 - this safety statement;
 - Apache-2.0 license file.
 
 Proof still needed before final submission claims:
 
-- public Hugging Face Space cold boot with app files present;
 - recorded live model run whose trace is not canned fallback;
 - recorded no-cloud run before claiming Off the Grid as achieved;
 - real trained-responder user-test notes using synthetic or de-identified scenarios;
+- local Parakeet ASR provider proof before claiming local audio;
 - demo video link;
-- social post link;
-- measured eval results before claiming model quality thresholds.
+- social post link.
 
 ## Non-Goals
 

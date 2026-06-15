@@ -10,6 +10,7 @@ def test_current_repo_report_keeps_remaining_external_gates_incomplete() -> None
     assert report["status"] == "incomplete"
     assert report["ready_for_badge_claims"] is False
     assert report["gates"]["claim_audit"]["passed"] is True
+    assert report["gates"]["hosted_omni_eval"]["passed"] is True
     assert report["gates"]["local_4b_50_case_eval"]["passed"] is False
     assert report["gates"]["no_cloud_route"]["passed"] is False
     assert report["gates"]["llama_champion_route"]["passed"] is False

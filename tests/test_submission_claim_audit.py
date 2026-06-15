@@ -11,6 +11,7 @@ def test_current_submission_claims_stay_evidence_gated() -> None:
     assert report["gate_status"]["off_grid"] is False
     assert report["gate_status"]["local_4b"] is False
     assert report["gate_status"]["local_asr"] is False
+    assert report["gate_status"]["well_tuned"] is True
     assert report["gate_status"]["backyard_user_use"] is False
 
 
@@ -51,3 +52,35 @@ def test_audit_flags_unproven_user_use_and_local_asr_claims() -> None:
 
     assert [violation["gate"] for violation in violations] == ["backyard_user_use", "local_asr"]
     assert {violation["file"] for violation in violations} == {"submission.md"}
+
+
+def test_well_tuned_gate_requires_archive_result_and_public_space_caveat(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    ledger = docs_dir / "model_parameter_evidence_ledger.md"
+    ledger.write_text(
+        "\n".join(
+            [
+                "Archive: build-small-hackathon/figment-finetuned-model-archive",
+                "Version: figment_sft_v14p",
+                "Result: v14p repair-union with 150/150 competence",
+                "Boundary: Do not imply the public no-secret Space is serving this tuned model.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert audit_submission_claims._has_well_tuned_evidence(tmp_path) is True
+
+    ledger.write_text(
+        "\n".join(
+            [
+                "Archive: build-small-hackathon/figment-finetuned-model-archive",
+                "Version: figment_sft_v14p",
+                "Result: v14p repair-union with 150/150 competence",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert audit_submission_claims._has_well_tuned_evidence(tmp_path) is False
