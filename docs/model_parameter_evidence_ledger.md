@@ -7,7 +7,7 @@ Purpose: keep parameter, route, locality, adapter, ASR, and organizer-confirmati
 ## Current Claim Boundary
 
 - Hosted Omni has measured eval evidence through the eval harness. The public Space is now verified runnable in no-secret canned-fallback mode, but that public Space proof is not live hosted Omni generation evidence.
-- The public Space target exists and cold-boots from the Space URL. Current public API evidence: `runtime.stage=RUNNING`, `hardware=cpu-basic`, `sha=94cbe85db8d4b766d7c6a59dfee7071fe98e9a3f`, 167 siblings, `app.py` present, `figment/observation_targets.py` present, and Space URL HTTP 200. Public workflow evidence remains no-secret canned fallback unless a later non-canned public trace is recorded.
+- The public Space target exists and cold-boots from the Space URL. Current public API evidence: `runtime.stage=RUNNING`, `hardware=cpu-basic`, 167 siblings, `app.py` present, `figment/observation_targets.py` present, and Space URL HTTP 200. Public workflow evidence remains no-secret canned fallback unless a later non-canned public trace is recorded.
 - The public model archive now records published measured Figment 4B LoRA merged artifacts through `figment_sft_v14p`. The strongest measured result is v14p repair-union on the corrected 150-case field-workflow holdout: 150/150 competence, 150/150 expected labels, 150/150 final validation, 0 deterministic patches, and 0 fallback. This is tuned model-system evidence, not no-cloud or clinical validation evidence.
 - The local 4B + Parakeet route is still the preferred no-cloud/off-grid proof path. The full BF16 4B artifact and Parakeet artifact are present locally, and the tuned v14p GGUF is published, but no-cloud route proof and local ASR provider proof are still separate gates.
 - Well-Tuned wording may cite the published measured v14p tuned artifacts if the submission/judging interpretation accepts the merged-model archive and local route support. Do not imply the public no-secret Space is serving the tuned model.
@@ -27,7 +27,7 @@ Purpose: keep parameter, route, locality, adapter, ASR, and organizer-confirmati
 
 | Claim | Required upgrade evidence |
 | --- | --- |
-| Public Space runnable | Satisfied for no-secret canned-fallback mode at Space commit `94cbe85db8d4b766d7c6a59dfee7071fe98e9a3f`: app files present, clean cold boot from the Space URL, and route/fallback labeling preserved. Non-canned public model traces remain separate proof. |
+| Public Space runnable | Satisfied for no-secret canned-fallback mode: app files present, clean cold boot from the Space URL, and route/fallback labeling preserved. Non-canned public model traces remain separate proof. |
 | Hosted model load-bearing | Cite hosted eval metrics separately from final validation: 31/50 whole-output competence and 480/650 model-retained fields in the follow-up run |
 | <=32B hosted Omni compliance | Organizer accepts the 31B model-card body count or the submission falls back to a clearly eligible smaller route |
 | Off the Grid | Recorded no-cloud run with trace evidence, either self-hosted Omni or local 4B + Parakeet/typed intake |

@@ -9,8 +9,8 @@ Primary tracker: [adversarial review action items](adversarial-review-action-ite
 | Artifact | Status | Link / evidence |
 | -------- | ------ | --------------- |
 | Public Hugging Face Space | Runnable in no-secret canned-fallback mode | https://huggingface.co/spaces/build-small-hackathon/figment |
-| Space cold boot with app files present | Verified 2026-06-15 | Space API `runtime.stage=RUNNING`, `hardware=cpu-basic`, `sha=94cbe85db8d4b766d7c6a59dfee7071fe98e9a3f`, 167 siblings, `app.py` and `figment/observation_targets.py` present; Space URL served HTTP 200 |
-| GitHub source repo | Pushed | https://github.com/ThomsenDrake/figment at `c15ed004ddf25ca4726e43d1a74da563b5504830` |
+| Space cold boot with app files present | Verified 2026-06-15 | Space API `runtime.stage=RUNNING`, `hardware=cpu-basic`, 167 siblings, `app.py` and `figment/observation_targets.py` present; Space URL served HTTP 200 |
+| GitHub source repo | Pushed | https://github.com/ThomsenDrake/figment on `main` |
 | Public fine-tuned model archive | Published | https://huggingface.co/build-small-hackathon/figment-finetuned-model-archive at `7da772ec7c0de20011d42780ea8afa65af4aef70`; includes v1 pilot plus v5-v14p BF16/GGUF artifacts, merge manifests, and model card |
 | Public eval/training dataset repo | Published | https://huggingface.co/datasets/build-small-hackathon/figment-eval-traces at `92d9564fe6c984c55d65c7ba35a4e04eddcdea01`; configs load for `default` plus `figment_sft_v1` through `figment_sft_v14p`; v14p viewer split is 4801 train / 534 validation rows with 47 columns |
 | Demo video | Proof needed | Pending |

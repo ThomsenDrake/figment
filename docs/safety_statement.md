@@ -45,7 +45,7 @@ Achieved in-repo artifacts:
 - hosted NVIDIA Omni client path and labeled canned fallback path;
 - trace and validator surfaces for review;
 - synthetic demo-audio asset path;
-- public Hugging Face Space cold boot with app files present at commit `94cbe85db8d4b766d7c6a59dfee7071fe98e9a3f`;
+- public Hugging Face Space cold boot with app files present, verified 2026-06-15;
 - published 4B LoRA model archive and eval/training dataset repo;
 - measured v14p repair-union result on the corrected 150-case field-workflow holdout: 150/150 competence, 150/150 expected labels, 150/150 final validation, 0 deterministic patches, and 0 fallback;
 - hosted Omni follow-up eval: 31/50 whole-output competence, 8/50 full fallback, 480/650 model-retained fields, 170/650 deterministic patches, and 50/50 final validation;
