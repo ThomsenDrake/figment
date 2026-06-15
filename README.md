@@ -61,7 +61,7 @@ make evidence-gates PYTHON=.venv/bin/python
 | Well-Tuned | **Claimed.** | The public model archive includes measured v14p tuned 4B BF16/GGUF artifacts. Keep deterministic patch and focused-repair separation visible when citing results. |
 | Off-Brand | **Claimed.** | The app uses a custom Gradio Server UI rather than default Gradio Blocks, with the Field Kit Workbench workflow and trace surfaces. |
 | Llama Champion | **Claimed.** | The local evaluation traces used the llama.cpp/GGUF route, and the repo includes llama.cpp-compatible local serving instructions for the tuned 4B artifacts. |
-| Sharing is Caring | **Claimed.** | Public Space, GitHub source, model archive, dataset/eval traces, trace schema, embedded launch video, and public field notes are published. |
+| Sharing is Caring | **Claimed.** | Public Space, GitHub source, model archive, dataset/eval traces, trace schema, embedded launch video, public field notes, and [social post](https://x.com/ThomsenDrake/status/2066630062649328098?s=20) are published. |
 | Field Notes | **Claimed.** | The Build Small writeup is published on Hugging Face: [Figment Build Blog](https://huggingface.co/blog/build-small-hackathon/figment-build-blog). |
 
 ## Why Figment Exists
@@ -163,6 +163,7 @@ The corrected scoring view changes 6 cases from the original frozen holdout and 
 - Runtime URL: [build-small-hackathon-figment.hf.space](https://build-small-hackathon-figment.hf.space/)
 - Model archive: [build-small-hackathon/figment-finetuned-model-archive](https://huggingface.co/build-small-hackathon/figment-finetuned-model-archive)
 - Eval traces and SFT corpora: [build-small-hackathon/figment-eval-traces](https://huggingface.co/datasets/build-small-hackathon/figment-eval-traces)
+- Social post: [x.com/ThomsenDrake/status/2066630062649328098](https://x.com/ThomsenDrake/status/2066630062649328098?s=20)
 - Safety statement: [docs/safety_statement.md](docs/safety_statement.md)
 - Submission gates: [docs/submission_checklist.md](docs/submission_checklist.md)
 - Build Small org card: [docs/build-small-hackathon-org-card.md](docs/build-small-hackathon-org-card.md)

@@ -38,7 +38,7 @@ Purpose: keep parameter, route, locality, adapter, ASR, and organizer-confirmati
 | Backyard AI user use | Completed user-test notes from a real trained responder on synthetic or de-identified scenarios |
 | Demo video | Published launch video: https://huggingface.co/spaces/build-small-hackathon/figment/resolve/main/assets/figment-live-space-launch-final.mp4 |
 | Field Notes | Published Hugging Face blog: https://huggingface.co/blog/build-small-hackathon/figment-build-blog |
-| Social post | Final link remains a separate submission artifact |
+| Social post | Published X post: https://x.com/ThomsenDrake/status/2066630062649328098?s=20 |
 
 ## Evaluation Score Boundary
 

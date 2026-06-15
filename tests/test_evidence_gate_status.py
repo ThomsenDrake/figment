@@ -13,6 +13,7 @@ def test_current_repo_report_marks_badge_claims_ready_with_external_gaps() -> No
     assert report["gates"]["claim_audit"]["passed"] is True
     assert report["gates"]["hosted_omni_eval"]["passed"] is True
     assert report["gates"]["demo_video"]["passed"] is True
+    assert report["gates"]["social_post"]["passed"] is True
     assert report["gates"]["all_six_merit_badges_claimed"]["passed"] is True
     assert report["gates"]["local_4b_50_case_eval"]["passed"] is False
     assert report["gates"]["no_cloud_route"]["passed"] is False

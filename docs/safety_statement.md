@@ -49,6 +49,7 @@ Achieved in-repo artifacts:
 - public Hugging Face Space cold boot with app files present, verified 2026-06-15;
 - embedded launch demo video at https://huggingface.co/spaces/build-small-hackathon/figment/resolve/main/assets/figment-live-space-launch-final.mp4;
 - published Field Notes blog at https://huggingface.co/blog/build-small-hackathon/figment-build-blog;
+- published social post at https://x.com/ThomsenDrake/status/2066630062649328098?s=20;
 - published 4B LoRA model archive and eval/training dataset repo;
 - measured v14p repair-union result on the corrected 150-case field-workflow holdout: 150/150 competence, 150/150 expected labels, 150/150 final validation, 0 deterministic patches, and 0 fallback;
 - hosted Omni follow-up eval: 31/50 whole-output competence, 8/50 full fallback, 480/650 model-retained fields, 170/650 deterministic patches, and 50/50 final validation;
@@ -59,8 +60,7 @@ Remaining external evidence gaps:
 
 - recorded live model run whose trace is not canned fallback;
 - real trained-responder user-test notes using synthetic or de-identified scenarios;
-- local Parakeet ASR provider proof before claiming local audio;
-- social post link.
+- local Parakeet ASR provider proof before claiming local audio.
 
 ## Non-Goals
 
