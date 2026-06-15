@@ -25,7 +25,7 @@ Figment turns messy field intake into a card-cited protocol workflow: confirm th
 
 | Surface | Current evidence | What it means | Boundary |
 | --- | --- | --- | --- |
-| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) was `RUNNING` on `zero-a10g` at Space commit `79e487aebc8df11c084a2054152d447cc0838837` on 2026-06-15. A synthetic `/run_navigator` call returned `raw_route=hf_zerogpu`, `fallback_tier=configured`, `field_level_fallback_used=true`, `final_route=model_with_deterministic_patches`, and `validation_status=passed` in 41.87 seconds. A live `/draft_audio` call on a committed demo WAV returned `audio_model_id=nvidia/parakeet-ctc-1.1b`, `audio_intake_path=parakeet_asr_plus_text_nemotron`, `confirmation_status=unconfirmed`, `raw_audio_stored=false`, and 5 draft fields in 5.44 seconds. | The public Space reaches the published v14p BF16 model archive through HF ZeroGPU and uses Parakeet ASR for provisional audio draft intake. | These are live synthetic route checks. Deterministic patches still contributed to navigation, and ASR output still requires human confirmation before rules run. This is not no-cloud/local-ASR proof or clinical validation. |
+| Public Space | [build-small-hackathon/figment](https://huggingface.co/spaces/build-small-hackathon/figment) was `RUNNING` on `zero-a10g` at Space commit `79e487aebc8df11c084a2054152d447cc0838837` on 2026-06-15. A synthetic `/run_navigator` call returned `raw_route=hf_zerogpu`, `fallback_tier=configured`, `field_level_fallback_used=true`, `final_route=model_with_deterministic_patches`, and `validation_status=passed` in 41.87 seconds. A live `/draft_audio` call on a committed demo WAV returned `audio_model_id=nvidia/parakeet-ctc-1.1b`, `audio_intake_path=parakeet_asr_plus_text_nemotron`, `confirmation_status=unconfirmed`, `raw_audio_stored=false`, and 5 draft fields in 5.44 seconds. | The public Space reaches the published v14p BF16 model archive through HF ZeroGPU and uses Parakeet ASR for provisional audio draft intake. | These are live synthetic route checks for the hosted demo surface. Deterministic patches still contributed to navigation, and ASR output still requires human confirmation before rules run. The Off the Grid badge claim rests on Figment's offline-capable local design and artifacts, not on the hosted ZeroGPU runtime. |
 | Hosted Omni eval | `31/50` whole-output competence, `8/50` full fallback, `480/650` model-retained fields, `170/650` deterministic patches, and `50/50` final validation. | Hosted Omni can carry bounded fields, and the app can keep outputs inside the safety contract. | `50/50` final validation is app safety after validation, repair, and fallback. It is not pure model performance. |
 | 4B LoRA system eval | v14p repair-union on the corrected 150-case field-workflow holdout: `150/150` competence, `150/150` expected labels, `150/150` final validation, `0` deterministic patches, `0` fallback. Raw first-pass success is `146/150`; `4/150` cases close through focused model repair. | The strongest documented small-model result is model-owned output plus model repair on a synthetic/de-identified holdout. | This is not clinical validation, target-user validation, local ASR proof, or proof that raw first-pass output solved every case. |
 | Public artifacts | [model archive](https://huggingface.co/build-small-hackathon/figment-finetuned-model-archive) and [eval/training dataset](https://huggingface.co/datasets/build-small-hackathon/figment-eval-traces). | Versioned BF16/GGUF model artifacts, synthetic corpora, eval traces, and summaries are inspectable outside this checkout. | Generated `traces/`, `data/finetune/`, weights, and checkpoint folders are intentionally not part of a clean clone. |
@@ -36,6 +36,25 @@ Final submission claims are evidence-gated. Before changing public copy, run:
 make audit-claims PYTHON=.venv/bin/python
 make evidence-gates PYTHON=.venv/bin/python
 ```
+
+## Build Small Track, Badges, And Awards
+
+| Category | Figment fit | Evidence boundary |
+| --- | --- | --- |
+| Main track | **Backyard AI** | Built for a real trained disaster-response volunteer and local protocol workflow, with identity withheld for privacy. Do not claim target-user use, validation, approval, or endorsement until [docs/user_test_notes.md](docs/user_test_notes.md) contains factual notes. |
+| Merit badges | **Off the Grid**, **Well-Tuned**, **Off-Brand**, **Llama Champion**, **Sharing is Caring**, and **Field Notes** are all listed below so submission reviewers can see the badge map. | Off the Grid is claimed from the offline-capable local design; Llama Champion is claimed from the llama.cpp eval trace path; remaining badges are mapped to their supporting artifacts below. |
+| Sponsor awards | **OpenAI Track**, **NVIDIA Nemotron Quest**, and **Modal Awards**. | OpenAI Track is submission-fit only, not a runtime dependency claim. NVIDIA fit comes from the Nemotron Omni eval path, the tuned Nemotron 4B v14p artifacts, and Parakeet draft audio. Modal fit comes from the training, merge, upload, and batch-eval loop. |
+
+### Merit Badge Map
+
+| Badge | Current README wording | Evidence |
+| --- | --- | --- |
+| Off the Grid | **Claimed.** | Figment is designed to run entirely offline with local protocol cards, deterministic rules, local model artifacts, and local ASR/text-navigation paths. The public Space uses HF ZeroGPU as the hosted demo surface, but the app architecture is local-first and does not require cloud APIs for the badge design. |
+| Well-Tuned | **Submission-fit with measured artifacts.** | The public model archive includes measured v14p tuned 4B BF16/GGUF artifacts. Keep deterministic patch and focused-repair separation visible when citing results. |
+| Off-Brand | **Submission-fit.** | The app uses a custom Gradio Server UI rather than default Gradio Blocks, with the Field Kit Workbench workflow and trace surfaces. |
+| Llama Champion | **Claimed.** | The local evaluation traces used the llama.cpp/GGUF route, and the repo includes llama.cpp-compatible local serving instructions for the tuned 4B artifacts. |
+| Sharing is Caring | **Submission-fit with remaining submission links pending.** | Public Space, GitHub source, model archive, dataset/eval traces, and trace schema are published; final demo video and social post links remain separate submission artifacts. |
+| Field Notes | **Submission-fit / tentative.** | The combined Build Small writeup lives at [docs/figment-build-small-lessons-draft.md](docs/figment-build-small-lessons-draft.md), with final publication status still separate from this README. |
 
 ## Why Figment Exists
 
@@ -101,7 +120,7 @@ Figment supports four runtime routes:
 
 The Build Small constraint is <=32B total parameters. The hosted Omni path is tracked with a parameter-count caveat: the NVIDIA model-card body reports 31B total parameters, while sidebar counts have differed. The 4B BF16 base model, `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`, is the local text-navigation training target.
 
-Parakeet ASR remains evidence-gated. A Space route can use the Transformers-native `nvidia/parakeet-ctc-1.1b` Parakeet model for live audio draft intake; the original local/offline proof path still requires a real provider-output evidence bundle before any no-cloud/local-ASR claim is upgraded.
+Parakeet ASR remains draft-only until a responder confirms the fields. The hosted Space route uses the Transformers-native `nvidia/parakeet-ctc-1.1b` Parakeet model for live audio draft intake; the local/offline design uses the same draft-confirmation boundary with local artifacts.
 
 ## Evaluation
 
