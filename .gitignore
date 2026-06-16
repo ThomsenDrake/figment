@@ -27,6 +27,7 @@ env/
 *.log
 tmp/
 scratch/
+output/
 .codex-workflows/runs/
 .playwright-cli/
 output/playwright/

@@ -1,14 +1,12 @@
 # Building Figment For Build Small: What I Learned About Making Small Models Useful
 
-Draft status: rough public draft, refreshed June 13, 2026 after the v5-v14p training/eval loop.
-
 I started Figment with a simple idea: what if a responder in a rural clinic, mobile unit, shelter, or disaster site had a protocol binder that could talk back?
 
-Not an AI doctor. Not a system that decides whether someone should go home, receive treatment, or ignore a symptom. The version I wanted to build for the Hugging Face Build Small Hackathon was narrower than that: a protocol navigator that could take messy field intake, surface red flags, retrieve relevant protocol cards, ask for missing observations, and help draft a grounded SBAR handoff.
+Not an AI doctor. Not a system that decides whether someone should go home, receive treatment, or ignore a symptom. The version I wanted to build for the Hugging Face Build Small Hackathon was narrower than that: a protocol navigator that could take messy field intake, surface red flags, retrieve relevant protocol cards, ask for missing observations, and help draft a grounded SBAR-style handoff: Situation, Background, Assessment, and Recommendation.
 
 The Build Small constraint made that idea more interesting. A lot of AI demos become persuasive by making the model bigger or the problem blurrier. Figment had to move the other way. The useful question was not "can a model answer medical questions?" It was "can a small-enough model do bounded, visible work inside a system that refuses to let it improvise?"
 
-After the first few days, I thought the lesson was restraint. After the next two days of evals, failed prompts, corrected scoring, H100 runs, and public artifact publishing, the lesson got sharper:
+After the first few days, I thought the lesson was restraint. After the next few days of evals, failed prompts, corrected scoring, Modal runs, artifact publishing, and live Space work, the lesson got sharper:
 
 Restraint is not just a safety pattern. It is an iteration engine.
 
@@ -18,7 +16,7 @@ That changed how I understand small-model product work.
 
 ## Audio Should Draft, Not Decide
 
-One of the first design decisions that stuck was that audio intake should be a draft layer, not a decision layer.
+One early design decision kept paying rent: audio intake should be a draft layer, not a decision layer.
 
 In the field, speech is natural. A responder may not have the time, lighting, or hand freedom to fill out a perfect form. It is tempting to treat audio as magic: record the note, send it to a model, and let the app continue.
 
@@ -28,31 +26,25 @@ Audio-derived text is treated as provisional. It can suggest fields like age, sy
 
 That may sound like a small UX detail, but it is one of the most load-bearing safety choices in the app. ASR errors are not rare edge cases. A dropped negation or malformed field can change the meaning of a case. The safer product shape is not "voice in, answer out." It is "voice in, editable draft, confirmed facts, then navigation."
 
-The same lesson applied to the demo. I originally had audio upload and demo clips working, but the better primary workflow was live audio ingest, with upload as a backup. That made the demo closer to the actual setting Figment is meant for: a responder speaking into the tool, then correcting the draft before using it.
-
-## Deterministic Safety Rules Are The Floor
-
-The second thing I learned is that deterministic safety logic should not be treated as an embarrassing fallback. In Figment, it is the floor.
-
-The app has deterministic red-flag rules for things like pediatric dehydration, respiratory distress, pregnancy danger signs, stroke signs, wound infection cues, and other prototype protocol-card categories. If those rules fire, the model cannot lower the urgency. The model can add useful structure around the case, but it does not get to reinterpret away the safety floor.
-
-That sounds obvious when written down. In practice, it changes how you evaluate the model. A safe final output does not necessarily mean the model performed well. It may mean the deterministic layer caught the case, retrieval supplied the relevant cards, validators rejected unsafe output, and fallback kept the app inside the contract.
-
-For a while, that made the project feel less impressive. Then I realized it made the project more honest.
-
-A medical-adjacent prototype should not try to prove that a model is safe by letting it be dangerous and hoping it behaves. It should make the model's job small enough that success and failure are both visible. Figment's rules, protocol cards, validators, traces, and fallback paths are not there because I do not believe in small models. They are there because I want to know exactly where the model helped and exactly where it did not.
+That shape carried through to the hosted Space. The live Parakeet route can draft fields from a committed demo WAV, but the result is still labeled unconfirmed. That label is not bureaucratic caution. It is the product contract.
 
 ## App Safety And Model Competence Are Different Numbers
 
-This became the most important evaluation lesson of the project.
+This became the most important evaluation lesson of the project. Deterministic safety logic is not an embarrassing fallback. In Figment, it is the floor.
 
-Early on, it would have been easy to report only final validation. The app could often produce a valid final navigator output because deterministic fallback was strong. But that would have hidden the real question for Build Small: was the model actually doing load-bearing work?
+The app has deterministic red-flag rules for things like pediatric dehydration, respiratory distress, pregnancy danger signs, stroke signs, wound infection cues, and other prototype protocol-card categories. If those rules fire, the model cannot lower the urgency. The model can add useful structure around the case, but it does not get to reinterpret away the safety floor.
+
+That changes the meaning of an eval. A safe final output does not necessarily mean the model performed well. It may mean deterministic rules caught the case, retrieval supplied the relevant cards, validators rejected unsafe output, and fallback kept the app inside the contract. A medical-adjacent prototype should not try to show that a model is safe by letting it be dangerous and hoping it behaves. It should make the model's job small enough that success and failure are both visible.
+
+Early on, it would have been easy to report only final validation. The app could often produce a valid final navigator output because the scaffold was strong. But that would have hidden the real question for Build Small: was the model actually doing load-bearing work?
 
 So I split the metrics.
 
-In the first 50-case hosted Omni eval, final validation passed `50/50`, but hosted model competence was only `28/50`. That distinction mattered. The app stayed inside its safety envelope, but the model was not carrying all of the work. Some cases needed deterministic fallback after hosted output failed validation or grounding checks.
+In this post, competence means the configured model path did the load-bearing work for a case: it produced the required navigator behavior itself, or through an allowed focused model repair, without getting credit for deterministic fallback.
 
-After adding a more constrained prompt contract, field-level provenance, and focused repair, the hosted follow-up improved. Whole-output competence moved to `31/50`, full deterministic fallback dropped to `8/50`, and the field-level metric showed `480/650` model-retained fields, with `170/650` deterministic patches.
+In the first 50-case eval against hosted Nemotron Omni, the hosted multimodal model route I used before the local 4B path, final validation passed `50/50`, but hosted model competence was only `28/50`. That distinction mattered. The app stayed inside its safety envelope, but the model was not carrying all of the work. Some cases needed deterministic fallback after hosted output failed validation or grounding checks.
+
+After adding a more constrained prompt contract, field-level provenance, and focused repair, the hosted follow-up improved. Whole-output competence moved to `31/50`, full deterministic fallback dropped to `8/50`, and the field-level metric showed that the model was retaining most bounded fields while deterministic logic patched the rest.
 
 That was the moment the eval started to feel honest. Instead of saying "the model passed" or "the app passed," I could say something more precise:
 
@@ -64,31 +56,16 @@ That was not a victory lap. It was a smoke alarm.
 
 If your app has fallback, validators, retrieval, and deterministic rules, do not collapse everything into one success number. A model-competence score and an app-safety score answer different questions.
 
-## Field-Level Provenance Changed My Relationship With Fallback
-
-The first version of Figment treated model output mostly as all-or-nothing JSON. If one important field failed validation, the app could fall back to deterministic output. That was safe, but it also threw away useful model work.
-
-The better pattern was field-level provenance.
-
-Instead of asking "did the whole model response pass?", Figment started asking:
+The mechanism that made the split useful was field-level provenance. Instead of asking only "did the whole model response pass?", Figment started asking:
 
 - Which fields came from the raw model?
 - Which fields were repaired by a focused model call?
 - Which fields were deterministically patched?
 - Which cases required full fallback?
 
-That changed the project. A model might select the right protocol pathway, ask useful missing-observation questions, and draft a reasonable checklist, while still failing one SBAR grounding rule. Field-level provenance lets the app keep the validated parts and patch the failed parts without pretending the whole output was model-generated.
+That changed the project. A model might select the right protocol pathway, ask useful missing-observation questions, and draft a reasonable checklist, while still failing one SBAR grounding rule. Field-level provenance lets the app keep validated parts and patch failed parts without pretending the whole output was model-generated.
 
-It also makes the trace more useful. The Trace tab is not just a debugging feature; it is the project's honesty surface. It shows input, rules, retrieval, prompt context, model output, validation, repair, fallback, and provenance. For a hackathon project, that might seem like a lot of plumbing. For a small-model project, it became the main way to show that the model was doing bounded work rather than being credited for deterministic scaffolding.
-
-Fallback is not one thing. There is a big difference between:
-
-- the model succeeded raw,
-- the model succeeded after focused repair,
-- the model contributed some fields,
-- the model failed and deterministic fallback produced the result.
-
-Those distinctions matter if you want to make credible claims about small models.
+It also makes the trace more useful. The Trace tab is not just a debugging feature; it is the project's honesty surface. It shows the intake, rules, retrieval, model output, validation, repair, fallback, provenance, and trace hashes. For a hackathon project, that might seem like a lot of plumbing. For a small-model project, it became the main way to show that the model was doing bounded work rather than being credited for deterministic scaffolding.
 
 ## Fine-Tuning Only Helped After The Eval Got Honest
 
@@ -96,23 +73,50 @@ The local 4B path was where the project got the most interesting and the most hu
 
 The target was `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`, served through a llama.cpp-compatible route after LoRA fine-tuning and GGUF conversion. The goal was not to make a general medical assistant. The goal was to teach a small local model the narrow Figment behavior: protocol-card discipline, red-flag preservation, missing-observation planning, safe handoff drafting, and schema-valid navigator JSON.
 
-The first fine-tuning pilot was valuable because it proved the full loop: generate teacher data, train on Modal, merge the adapter, convert to GGUF, serve locally, and run the eval harness without cloud inference. But the result was not a clean win. The pilot made the model better at shape and field retention, but it regressed competence to `11/50` on the locked 50-case eval.
+The first fine-tuning pilot was valuable because it demonstrated the full loop: generate teacher data, train on Modal, merge the adapter, convert to GGUF, serve locally, and run the eval harness against the local route. But the result was not a clean win. It landed at only `11/50` competence on the locked 50-case eval.
 
 That failure was useful. It showed that training loss and JSON validity were not enough. The dataset had taught format more than judgment. It had too few examples for some failure modes. Some rows were not aligned tightly enough to the real harness. And the eval was punishing behaviors that looked safe in prose but violated the exact scorer or product contract.
 
-The v2 dataset was a better answer. It used a stronger teacher model to generate synthetic, validated rows aligned to the actual Figment prompt and repair tasks. It kept locked eval cases out of training. It added more repair rows and failure-class coverage. The v2 local model improved to `33/50` on the locked 50-case eval, with `50/50` final validation.
+The v2 dataset was a better answer. It used a stronger teacher model to generate synthetic, validated rows aligned to the actual Figment prompt and repair tasks, kept locked eval cases out of training, and added more repair rows and failure-class coverage. The v2 local model improved to `33/50` on the locked 50-case eval, with `50/50` final validation.
 
-Then v3 changed the question again.
+Then v3 changed the question again. Rather than only optimizing the locked 50-case eval, I created a 150-case field-workflow holdout for rural clinic intake, disaster triage, ASR-like confirmed text, low-resource constraints, radio handoff, SBAR usefulness, and source-card discipline. V3 reached `107/150` competence, with `93/150` raw local-model successes, `14/150` focused repair successes, `2/150` full fallbacks, and `148/150` final validation.
 
-Rather than only optimizing the locked 50-case eval, I created a 150-case field-workflow holdout. That holdout asked whether Figment helped the real workflow: rural clinic intake, disaster triage, ASR-like confirmed text, low-resource constraints, radio handoff, SBAR usefulness, and source-card discipline.
+That sounded good, and in many ways it was. But the failure distribution mattered more than the headline score. The handoff layer was still weak. Radio handoff and SBAR usefulness were exactly where the model needed help.
 
-On that holdout, v3 reached `107/150` competence, with `93/150` raw local-model successes, `14/150` focused repair successes, `2/150` full fallbacks, and `148/150` final validation.
+That is where the next few days of work changed the project.
 
-That sounded good, and in many ways it was. But the failure distribution mattered more than the headline score. The handoff layer was weak: radio handoff and SBAR usefulness were exactly where the model still needed help.
+## The Eval Loop Got Teeth
 
-That is where the next two days of work changed the project.
+The later Figment loop was less like one big training run and more like an eval-driven curriculum.
 
-## Sometimes The Benchmark Is Wrong
+Here is the short version:
+
+| Run | Competence | Raw success | Repair success | Expected labels | Final validation | Fallback | Deterministic patches | Lesson |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| v3 | 107/150 | 93/150 | 14/150 | 0/150 | 148/150 | 2 | 114 | Big field-workflow jump, but weak handoff behavior |
+| v4 | 109/150 | 109/150 | 0/150 | 149/150 | 148/150 | 2 | 104 | Better raw output, still scaffold-heavy |
+| v5 | 2/150 | 2/150 | 0/150 | 150/150 | 150/150 | 0 | 302 | The app passed; the model did not |
+| v6 | 142/150 | 142/150 | 0/150 | 146/150 | 150/150 | 0 | 21 | Targeted replay and delta rows worked |
+| v7 corrected | 148/150 | 148/150 | 0/150 | 147/150 | 150/150 | 0 | 3 | Failures became inspectable |
+| v10 | 147/150 | 147/150 | 0/150 | 150/150 | 150/150 | 0 | 6 | Narrow misses resisted generic fixes |
+| v14p | 146/150 | 146/150 | 0/150 | 150/150 | 150/150 | 0 | 8 | Raw path plateaued |
+| v14p repair-union | 150/150 | 146/150 | 4/150 | 150/150 | 150/150 | 0 | 0 | Model repair closed the remaining cases |
+
+Competence, raw success, repair success, expected labels, final validation, and fallback are case-level counts. Expected labels are the protocol/risk labels the holdout says the case should preserve. Deterministic patches are field-level counts: the number of output fields the deterministic layer overwrote or supplied.
+
+The v14p repair-union row is the same v14p model with focused model repair enabled for the remaining cases.
+
+The v3 expected-label number is not apples-to-apples with the later corrected runs. I include it as an early baseline, not as a clean leaderboard row.
+
+The table is not a straight victory staircase. That is the point.
+
+Some runs looked safer because the app was helping more. Some prompt probes made the model worse. Some data deltas moved the target metric, then plateaued. The useful thing was not that every version improved. The useful thing was that the eval made it possible to tell what kind of change had happened.
+
+V5 is the run I keep coming back to because it would have been easy to misunderstand: the app passed and the model did not. That forced a decision. I could make the scaffold stronger and keep reporting final validation, or I could use v5 as evidence that the model-owned target needed more work. The second option made the rest of the project better.
+
+V6 used targeted delta rows plus replay rows from earlier versions, training against the failure shape that v5 exposed. Competence moved from `2/150` to `142/150` while fallback stayed at zero. Later runs kept narrowing misses; some improved the exact metric, some did not, and a few looked nearly identical. That was frustrating, but it was also evidence that the eval had become specific enough to resist hand-wavy progress stories.
+
+## Check The Target Before Training
 
 The most valuable bug I found was not in the model. It was in the scoring and deterministic rule path.
 
@@ -122,73 +126,56 @@ I did not mutate the original frozen holdout. Instead, I created a corrected sco
 
 This became a new rule for the project: do not train your way around a bad benchmark. Fix the benchmark, leave a receipt, and rerun the model.
 
-## Sometimes Prompting Harder Makes Things Worse
+The same rule applied to prompts. Some failures involved missing required observation ownership, so I tested stricter prompt contracts that made required observation IDs more explicit and more mandatory. In theory, that should have helped. In practice, one mandatory-observation prompt probe made the run worse. That was a useful embarrassment: "prompt harder" was not a general solution.
 
-I also tried the obvious prompt fixes.
+The better loop became:
 
-Some failures involved missing required observation ownership. So I tested stricter prompt contracts that made required observation IDs more explicit and more mandatory. In theory, that should have helped. In practice, one mandatory-observation prompt probe made the run worse.
+- identify the exact field or case family,
+- decide whether the app, model, or scorer should own it,
+- add targeted data only when the model really should own it,
+- verify against the same holdout,
+- keep raw, repair, patch, and fallback counts separate.
 
-That was a useful embarrassment.
+That loop is slower than prompt fiddling. It is also harder to fool.
 
-It reminded me that a prompt is not a magic policy layer. If the model is already near the edge of a narrow behavior, adding more contract language can crowd the task, make it overfit the wrong cue, or shift attention away from the actual field workflow. Some failures needed better data. Some needed a clearer scaffold. Some needed the app to stop asking the model for things the app already knew. "Prompt harder" was not a general solution.
+## What V14p Actually Proves
 
-## V5 Through V14p Became A Curriculum Loop
+The strongest current result is v14p repair-union on the corrected 150-case holdout. Repair-union means raw successes unioned with focused-repair successes: cases the first model pass got right plus cases a bounded model repair closed.
 
-The later local models were less like one big training run and more like an eval-driven curriculum.
+- `150/150` competence successes,
+- `150/150` expected-label successes,
+- `150/150` final-validation successes,
+- zero deterministic patches,
+- zero fallback uses,
+- `146/150` raw configured-model successes,
+- `4/150` cases resolved by focused model repair,
+- no unsupported facts counted in the handoff metrics.
 
-V5 proved that the harness could keep the app safe even when the model was not carrying the work. It reached `150/150` final validation, but only `2/150` model competence. That result forced the right question: what would it take for the configured model, not the scaffolding, to own the fields?
+That is a strong result, but it has to be named precisely.
 
-V6 was the first big answer. Instead of regenerating everything from scratch, I built a corpus with targeted deltas plus replay rows from earlier versions. It reached `142/150` competence, `150/150` final validation, zero fallback, and far fewer deterministic patches.
+It does not mean every first-pass model response worked. It does not mean the app is ready for real-world deployment. It does not mean the synthetic holdout is a substitute for field testing with actual users.
 
-V7 improved again: `148/150` competence, zero fallback, and only a handful of deterministic patches. On the corrected scoring view, it still had real misses, especially around postpartum-fever observation ownership and field-specific required-observation behavior. But now the failures were small enough to inspect case by case.
+It means the local 4B Figment system, with model-owned repair but without deterministic patching or fallback, can complete the corrected field-workflow holdout while preserving the prototype's safety and grounding contract.
 
-The v8-v14p loop kept narrowing those misses. The data was not generic "more medical examples." It was targeted rows for multi-rule observation ownership, postpartum-fever required observations, source/support cards, visible-field closure, and focused repair behavior. Some versions improved the exact metric. Some did not. A few looked nearly identical. That was frustrating, but it was also evidence that the eval had become specific enough to resist hand-wavy progress stories.
+That is a narrow claim. I like it because it is narrow enough to be useful.
 
-The strongest current run is v14p repair-union: `150/150` competence, `150/150` expected labels, and `150/150` final validation on the corrected 150-case holdout, with zero deterministic patches and zero fallback. The nuance matters: raw configured-model success is still `146/150`; four cases are resolved by focused model repair, and eight fields are marked as model-repaired rather than model-raw.
-
-That is a much better result than the early local runs, but it is not the same claim as "the raw model passed everything." It proves something narrower and more useful:
-
-The local 4B Figment system can complete this corrected field-workflow eval with model-owned output and model repair, without deterministic patching or full fallback, while preserving red flags, source discipline, and handoff constraints.
-
-That is the kind of claim I can actually defend.
-
-## The Product Surface Had To Catch Up
+## Make The Evidence Legible
 
 Another thing I learned: evidence is not enough if the product surface does not make the evidence legible.
 
-Figment started as a fairly functional Gradio app. It had the pieces: intake, rules, retrieval, navigator output, trace. But it felt more like a harness than a field tool.
+Figment started as a functional Gradio app. It had the pieces: intake, rules, retrieval, navigator output, trace. But it felt more like a harness than a field tool. The later UI work moved it to a custom Gradio Server surface with a "Field Kit Workbench" feel. The workflow became clearer without hiding the machinery that made the result trustworthy.
 
-The later UI work moved it to a custom Gradio Server surface with a "Field Kit Workbench" feel. The important part was not just that it looked better. The important part was that the user workflow became clearer without changing the model harness contract. The named API endpoints, intake/risk/retrieval/navigator/trace data shape, demo-case loader, and eval harness stayed stable.
+The hosted Space became part of the same lesson. It is one thing to have a repo, eval traces, and a local model story. It is another thing to make the public artifact actually run where judges will click it. On June 15, the Hugging Face Space was running on HF ZeroGPU at a pinned commit, with the published v14p BF16 archive preloaded and a ZeroGPU route wired into the app.
 
-That taught me a product lesson I wish I had internalized earlier. You can make a prototype more delightful without hiding the machinery that makes it trustworthy. The right UI did not bury the trace; it made the workflow easier to understand so the trace could matter more.
+That deployment work had its own mini eval loop: runtime fixes, prompt compaction, route proof, then Parakeet ASR wiring. Parakeet CTC is the speech-to-text model used here for audio draft intake. A synthetic navigator call routed through HF ZeroGPU to the v14p archive, passed validation in about 42 seconds, and, importantly, still logged deterministic patches. A draft-audio call transcribed a committed demo WAV with Parakeet CTC in about 5 seconds and returned five draft fields, all marked unconfirmed with no raw audio stored.
 
-## Public Receipts Matter
+That was a real upgrade to the demo story. In that June 15 check, the public Space could reach the tuned v14p archive through HF ZeroGPU and produce provisional audio-derived intake fields with Parakeet.
 
-The hackathon also changed how I think about artifact publishing.
+It is also not the same evidence as the corrected holdout result. The public route still showed deterministic patches in that synthetic navigation check. The ASR output is still unconfirmed draft intake. The local 4B route is the evidence for local-model operation; the hosted Space is evidence that the public demo route worked on HF infrastructure. The lesson is the same one Figment kept teaching me: deployment evidence, eval evidence, and product safety evidence are related, but they are not interchangeable.
 
-It is one thing to say "I trained a local model." It is another thing to publish model artifacts, dataset cards, configs, eval traces, and schema-stable dataset viewers that let someone inspect the path. By the end of the later loop, the Hugging Face repos had public artifacts and dataset configs for v5 through v14p, with the v8-v14p corpora published and verified.
+The hackathon also changed how I think about artifact publishing. It is one thing to say "I trained a local model." It is another thing to publish model artifacts, dataset cards, configs, eval traces, Space commits, and schema-stable dataset viewers that let someone inspect the path. By the end of the later loop, the Hugging Face repos had public artifacts and dataset configs for v5 through v14p, with the v8-v14p corpora published through the same viewer-safe schema, and the Space itself had a live v14p ZeroGPU route plus Parakeet draft audio.
 
-That matters for a small-model project because the interesting claim is rarely just the final score. The claim is the path: which rows were added, which cases were excluded, which eval was frozen, which scoring view was corrected, which artifacts were served, and which fallback paths were counted separately.
-
-The competitor scan made that even clearer. Some Build Small projects had very legible demos. Dental SOAP, for example, is a strong direct comparison: guided intake, small Qwen model roles, deterministic safety sentinel, and printable handoff. ScrubData is technically strong in another direction. Figment's edge is not that it is the simplest demo. Its edge is the depth of the evidence trail: model versions, datasets, traces, failure accounting, and an app surface that shows how the answer was made.
-
-That is also the risk. A deep evidence trail only helps if judges and users can understand it quickly. The demo still has to make the Backyard story obvious: here is the messy field intake, here are the red flags, here is what the small local model contributed, here is what the app refused to let it decide, and here is the handoff you can use.
-
-## What I Would Tell Another Build Small Team
-
-If I were giving advice to someone building with a small model in a high-stakes-ish workflow, I would say:
-
-Start with the boundary, not the model. Decide what the model is allowed to own, what the app owns deterministically, and what a human must confirm.
-
-Measure app safety and model competence separately. If the final app output passes because a scaffold saved it, count that as scaffold success, not model success.
-
-Make provenance a product feature. Users and judges should be able to see which fields came from the model, repair, rules, retrieval, or fallback.
-
-Let failures become curriculum, but only after checking whether the eval is fair. Some misses deserve training rows. Some deserve harness fixes. Some deserve a corrected benchmark.
-
-Do not assume a stricter prompt is a better contract. Verify it with the same eval, and be willing to throw it away.
-
-Publish the receipts. Scores are more credible when the artifacts, datasets, traces, and manifests exist outside your laptop.
+That matters because the interesting claim is rarely just the final score. The claim is the path: which rows were added, which cases were excluded, which eval was frozen, which scoring view was corrected, which artifacts were served, and which fallback paths were counted separately. Figment's edge is the depth of that evidence trail. The risk is that a deep evidence trail only helps if judges and users can understand it quickly.
 
 ## The Lesson I Am Taking From Build Small
 
@@ -196,9 +183,9 @@ Before this project, I would have described small-model product work mostly in t
 
 Small is also a design discipline.
 
-It means narrowing the model's job until it can be checked. It means using deterministic rules where determinism is safer. It means making retrieval explicit. It means refusing to count fallback as model competence. It means keeping traces detailed enough that a judge, user, or future builder can see what happened. It means letting the model contribute where language and prioritization matter, while keeping safety-critical floors outside the model's control.
+It means starting with the boundary, not the model. It means narrowing the model's job until it can be checked. It means using deterministic rules where determinism is safer, making retrieval explicit, refusing to count fallback as model competence, and keeping traces detailed enough that a judge, user, or future builder can see what happened. It means letting the model contribute where language and prioritization matter, while keeping safety-critical floors outside the model's control.
 
-The first version of this post ended with "make the next eval sharper." After v5 through v14p, I would say it a little differently:
+The first version of this post ended with "make the next eval sharper." After v5 through v14p and the live Space work, I would say it a little differently:
 
 Make the next failure smaller, clearer, and harder to hide.
 
